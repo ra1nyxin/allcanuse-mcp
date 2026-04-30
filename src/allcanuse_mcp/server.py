@@ -1,0 +1,425 @@
+from __future__ import annotations
+
+from mcp.server.fastmcp import FastMCP
+
+from allcanuse_mcp.descriptions import SERVER_INSTRUCTIONS
+from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
+from allcanuse_mcp.descriptions import render_guides_index_markdown
+from allcanuse_mcp.descriptions import render_model_playbook_markdown
+from allcanuse_mcp.descriptions import render_overview_markdown
+from allcanuse_mcp.descriptions import render_tool_quick_reference_markdown
+from allcanuse_mcp.descriptions import render_workflow_code_edit_markdown
+from allcanuse_mcp.descriptions import render_workflow_desktop_observation_markdown
+from allcanuse_mcp.descriptions import render_workflow_duty_watch_markdown
+from allcanuse_mcp.descriptions import render_workflow_network_diagnostics_markdown
+from allcanuse_mcp.descriptions import render_workflow_web_research_markdown
+from allcanuse_mcp.tools import device as device_tools
+from allcanuse_mcp.tools import duty as duty_tools
+from allcanuse_mcp.tools import exec as exec_tools
+from allcanuse_mcp.tools import files as file_tools
+from allcanuse_mcp.tools import network as network_tools
+from allcanuse_mcp.tools import system as system_tools
+from allcanuse_mcp.tools import windows as window_tools
+
+
+def _tool_category(tool_name: str) -> str:
+    categories = {
+        "system": {
+            "list_all_tools",
+            "get_system_info",
+            "get_env",
+            "get_time",
+            "get_disk_usage",
+            "get_network_config",
+            "get_ipconfig",
+            "list_network_adapters",
+        },
+        "exec": {
+            "run_shell",
+            "run_cmd",
+            "run_powershell",
+            "start_process",
+            "kill_process",
+            "list_processes",
+            "get_process_tree",
+            "find_port_process",
+        },
+        "files": {
+            "list_tree",
+            "read_file",
+            "write_file",
+            "patch_lines",
+            "replace_text",
+            "mkdir",
+            "move_path",
+            "delete_path",
+            "zip_paths",
+            "extract_archive",
+            "list_desktop_files",
+            "find_files",
+            "search_text",
+            "stat_path",
+            "copy_path",
+            "hash_file",
+            "read_binary_file",
+            "write_binary_file",
+            "list_recent_files",
+            "read_json_file",
+            "write_json_file",
+            "which_command",
+        },
+        "device": {"list_cameras", "capture_camera_photo"},
+        "duty": {
+            "wait",
+            "wait_until",
+            "get_scheduler_time",
+            "wait_for_file",
+            "wait_for_process",
+            "wait_for_port",
+            "wait_for_http",
+            "wait_for_window",
+            "wait_for_desktop_change",
+            "create_background_task",
+            "list_background_tasks",
+            "get_background_task",
+            "cancel_background_task",
+            "pause_background_task",
+            "resume_background_task",
+            "wait_for_background_task",
+            "create_task_plan",
+            "update_task_step",
+            "append_task_event",
+            "record_task_artifact",
+            "summarize_background_task",
+            "get_task_handoff",
+            "mark_task_waiting_for_user",
+            "mark_task_waiting_for_condition",
+        },
+        "window": {"list_windows", "get_active_window", "get_desktop_context", "capture_screenshot"},
+        "network": {
+            "download_file",
+            "http_request",
+            "http_head",
+            "fetch_response_headers",
+            "submit_web_form",
+            "upload_file",
+            "fetch_webpage_text",
+            "webpage_to_markdown",
+            "extract_links_from_webpage",
+            "extract_tables_from_webpage",
+            "extract_webpage_elements",
+            "trace_http_redirects",
+            "websocket_connect",
+            "trace_route",
+            "resolve_dns_records",
+            "reverse_dns_lookup",
+            "dns_lookup",
+            "get_tls_certificate",
+            "ping_host",
+            "tcp_connect",
+            "raw_tcp_exchange",
+            "udp_send_receive",
+            "scan_ports",
+            "list_established_connections",
+            "list_listening_ports",
+        },
+    }
+    for category, names in categories.items():
+        if tool_name in names:
+            return category
+    return "other"
+
+
+def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
+    mcp = FastMCP(
+        name="allcanuse-mcp",
+        instructions=SERVER_INSTRUCTIONS,
+        host=host,
+        port=port,
+    )
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["list_all_tools"])
+    def list_all_tools(include_descriptions: bool = False) -> dict:
+        items = []
+        for tool_name in sorted(TOOL_DESCRIPTIONS):
+            first_line = TOOL_DESCRIPTIONS[tool_name].splitlines()[0]
+            item = {
+                "name": tool_name,
+                "category": _tool_category(tool_name),
+                "summary": first_line,
+            }
+            if include_descriptions:
+                item["description"] = TOOL_DESCRIPTIONS[tool_name]
+            items.append(item)
+        return {"count": len(items), "tools": items}
+
+    system_tools.register(mcp)
+    exec_tools.register(mcp)
+    file_tools.register(mcp)
+    device_tools.register(mcp)
+    duty_tools.register(mcp)
+    window_tools.register(mcp)
+    network_tools.register(mcp)
+
+    @mcp.resource(
+        "resource://guides/index",
+        name="allcanuse-guides-index",
+        title="Guide 与 Prompt 索引",
+        mime_type="text/markdown",
+        description="列出当前 MCP 内置的 guides、workflows 和 prompts，方便模型先发现有哪些内置说明可用。",
+    )
+    def guide_index() -> str:
+        return render_guides_index_markdown()
+
+    @mcp.resource(
+        "resource://guides/overview",
+        name="allcanuse-guide-overview",
+        title="allcanuse 使用总览",
+        mime_type="text/markdown",
+        description="面向模型的总览指南，介绍如何在这个 MCP Server 中选择工具。",
+    )
+    def guide_overview() -> str:
+        return render_overview_markdown()
+
+    @mcp.resource(
+        "resource://guides/model-playbook",
+        name="allcanuse-model-playbook",
+        title="模型操作手册",
+        mime_type="text/markdown",
+        description="给中小模型的详细工作手册，解释如何选择和组合工具。",
+    )
+    def guide_model_playbook() -> str:
+        return render_model_playbook_markdown()
+
+    @mcp.resource(
+        "resource://guides/tool-quick-reference",
+        name="allcanuse-tool-quick-reference",
+        title="工具速查手册",
+        mime_type="text/markdown",
+        description="给模型的压缩版工具速查资源，适合先快速决定该用哪些工具。",
+    )
+    def guide_tool_quick_reference() -> str:
+        return render_tool_quick_reference_markdown()
+
+    @mcp.resource(
+        "resource://guides/workflows/web-research",
+        name="allcanuse-workflow-web-research",
+        title="网页阅读工作流",
+        mime_type="text/markdown",
+        description="给模型的网页阅读工作流，说明如何组合网页正文、链接和元素提取工具。",
+    )
+    def guide_workflow_web_research() -> str:
+        return render_workflow_web_research_markdown()
+
+    @mcp.resource(
+        "resource://guides/workflows/code-edit",
+        name="allcanuse-workflow-code-edit",
+        title="代码修改工作流",
+        mime_type="text/markdown",
+        description="给模型的代码修改工作流，说明如何组合文件搜索、读取、修改和验证工具。",
+    )
+    def guide_workflow_code_edit() -> str:
+        return render_workflow_code_edit_markdown()
+
+    @mcp.resource(
+        "resource://guides/workflows/desktop-observation",
+        name="allcanuse-workflow-desktop-observation",
+        title="桌面观察工作流",
+        mime_type="text/markdown",
+        description="给模型的桌面观察工作流，说明如何组合窗口和截图工具。",
+    )
+    def guide_workflow_desktop_observation() -> str:
+        return render_workflow_desktop_observation_markdown()
+
+    @mcp.resource(
+        "resource://guides/workflows/network-diagnostics",
+        name="allcanuse-workflow-network-diagnostics",
+        title="网络排查工作流",
+        mime_type="text/markdown",
+        description="给模型的网络排查工作流，说明如何组合网络配置、连通性和接口工具。",
+    )
+    def guide_workflow_network_diagnostics() -> str:
+        return render_workflow_network_diagnostics_markdown()
+
+    @mcp.resource(
+        "resource://guides/workflows/duty-watch",
+        name="allcanuse-workflow-duty-watch",
+        title="值班与交接工作流",
+        mime_type="text/markdown",
+        description="给模型的值班工作流，说明如何组合等待、后台任务、事件记录和任务交接工具。",
+    )
+    def guide_workflow_duty_watch() -> str:
+        return render_workflow_duty_watch_markdown()
+
+    @mcp.resource(
+        "resource://guides/tools/{tool_name}",
+        name="allcanuse-tool-guide",
+        title="单个工具说明",
+        mime_type="text/markdown",
+        description="读取某个工具的详细说明和调用示例。",
+    )
+    def guide_tool(tool_name: str) -> str:
+        if tool_name not in TOOL_DESCRIPTIONS:
+            known = ", ".join(sorted(TOOL_DESCRIPTIONS))
+            return f"# 未知工具\n\n`{tool_name}` 不存在。\n\n可用工具：\n{known}"
+        return f"# {tool_name}\n\n{TOOL_DESCRIPTIONS[tool_name]}"
+
+    @mcp.prompt(
+        name="workspace_operator",
+        title="工作站操作提示",
+        description="给中小模型一段更直接的工具使用提示，帮助其在 Windows 或 Linux 实验环境中工作。",
+    )
+    def workspace_operator(task: str) -> list[dict]:
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "你可以使用当前 MCP Server 暴露的工具完成这项任务。"
+                    "这些工具就是你的手、眼睛和操作能力；需要观察、读取、判断、修改、验证时，直接用工具。"
+                    "不要无谓回避工具，也不要只给口头建议而不动手。"
+                    "优先按“观察 -> 判断 -> 执行 -> 验证”的顺序推进。"
+                    "能用多个相关工具组合完成时，就合理组合，例如："
+                    "代码任务先看目录和文件，再修改，再跑命令验证；"
+                    "网页任务先读正文，再提取链接或元素；"
+                    "网络任务先看配置，再测 DNS、ping、TCP、HTTP。"
+                    "如果任务涉及较长等待、用户离线、稍后回来、今晚值班、断线后继续接手，优先切到值班模式：短等用 `wait`，明确条件用 `wait_for_*`，长期托管用 `create_background_task`，交接用 `get_task_handoff`。"
+                    "优先使用结构化工具，而不是把所有事情都交给 shell。"
+                    "如果当前任务依赖缺失，并且工具或命令已经明确提示缺少什么，"
+                    "你可以先安装最小必需依赖后继续。"
+                    f"当前任务：{task}"
+                ),
+            }
+        ]
+
+    @mcp.prompt(
+        name="multi_tool_executor",
+        title="多工具执行提示",
+        description="要求模型主动组合多个工具推进任务，而不是停留在单步建议上。",
+    )
+    def multi_tool_executor(task: str) -> list[dict]:
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "你现在应把 MCP 工具当作自己的手和眼睛。"
+                    "这个任务默认不是只靠语言分析完成，而是要主动使用多个相关工具推进。"
+                    "优先按“观察 -> 判断 -> 执行 -> 验证”的顺序工作。"
+                    "不要无谓回避工具；如果某一步需要事实、状态、文件内容、网页内容、窗口状态或网络结果，就直接调用工具获取。"
+                    "如果任务涉及代码，先找文件并读取，再修改，再执行验证命令。"
+                    "如果任务涉及网页，先读正文，再找链接或抓元素。"
+                    "如果任务涉及网络，先看配置，再测 DNS、ping、TCP、HTTP。"
+                    "如果任务涉及桌面，先看桌面上下文，再看活动窗口或截图。"
+                    "如果任务涉及较长等待、用户离线、稍后回来、需要跨会话继续，主动考虑值班工具：短等用 `wait`，明确条件用 `wait_for_*`，长期托管用 `create_background_task`，恢复交接用 `get_task_handoff`。"
+                    "如果工具已经足够，不要额外安装同类依赖；只有在工具明确提示缺依赖且当前任务确实需要时，才安装最小必需依赖。"
+                    f"当前任务：{task}"
+                ),
+            }
+        ]
+
+    @mcp.prompt(
+        name="duty_shift_operator",
+        title="值班与交接提示",
+        description="指导模型在长期等待、用户离线、断线重连和跨会话交接场景下合理使用值班工具。",
+    )
+    def duty_shift_operator(task: str, situation: str = "") -> list[dict]:
+        situation_hint = f"当前场景：{situation}。" if situation else ""
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "你正在处理一个可能需要值班、等待、托管或交接的任务。"
+                    "值班工具不是装饰，而是你在用户离线、会话中断、等待时间较长时继续推进任务的主要手段。"
+                    "先判断场景：如果只是几秒到几十秒的短等待，并且你会在当前回复里继续处理，优先用 `wait` 或 `wait_until`；"
+                    "如果等待对象很明确，优先用 `wait_for_file`、`wait_for_process`、`wait_for_port`、`wait_for_http`、`wait_for_window`、`wait_for_desktop_change`；"
+                    "如果用户会离开、睡觉、稍后回来，或者任务可能跨会话持续较久，优先立刻用 `create_background_task` 托管，不要只停在口头等待。"
+                    "后台任务创建后，尽早补 `create_task_plan`、`append_task_event`、`record_task_artifact`，让后续接手时能看懂。"
+                    "如果当前必须等用户决定，优先用 `mark_task_waiting_for_user` 把问题写清楚；如果只是等外部条件成熟，可用 `mark_task_waiting_for_condition` 或直接继续轮询。"
+                    "重新接手旧任务、断线恢复、跨模型交接时，优先用 `get_task_handoff`，必要时再读 `get_background_task` 或 `summarize_background_task`。"
+                    "典型场景：盯服务恢复用 `wait_http` 或后台 `wait_http`；盯安装器或弹窗用 `wait_window` 或 `wait_desktop_change`；盯构建产物用 `wait_file`。"
+                    "不要因为用户暂时不在线就停在原地，只要能条件化，就应托管给值班工具继续推进。"
+                    f"{situation_hint}"
+                    f"当前任务：{task}"
+                ),
+            }
+        ]
+
+    @mcp.prompt(
+        name="web_research_operator",
+        title="网页研究提示",
+        description="指导模型如何组合网页正文、链接、元素和下载工具完成网页阅读或资料抓取。",
+    )
+    def web_research_operator(task: str, url: str = "") -> list[dict]:
+        url_hint = f"目标网页：{url}。" if url else ""
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "你正在执行网页阅读或网页资料抓取任务。"
+                    "工具就是你的浏览与抓取能力，应主动使用。"
+                    "推荐顺序：先用 `fetch_webpage_text` 读取正文；"
+                    "再用 `extract_links_from_webpage` 找文档入口、下载链接、跳转链接；"
+                    "需要精确抓取标题、描述、文章区块、特定链接时，再用 `extract_webpage_elements`。"
+                    "如果需要保存文件，再用 `download_file`。"
+                    "网络较慢或页面较大时，主动调大 `timeout_ms` 或 `max_text_chars`。"
+                    "不要只凭 URL 猜内容，先读网页再下结论。"
+                    f"{url_hint}"
+                    f"当前任务：{task}"
+                ),
+            }
+        ]
+
+    @mcp.prompt(
+        name="code_fix_operator",
+        title="代码修复提示",
+        description="指导模型如何组合文件搜索、读取、修改和验证工具完成代码修复或开发任务。",
+    )
+    def code_fix_operator(task: str, root: str = "") -> list[dict]:
+        root_hint = f"优先检查目录：{root}。" if root else ""
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "你正在执行代码修复或开发任务。"
+                    "工具就是你的读代码、改代码、验证代码的能力，应主动使用。"
+                    "推荐顺序：先用 `list_tree`、`find_files`、`search_text`、`read_file` 获取上下文；"
+                    "再用 `patch_lines`、`replace_text`、`write_file`、`write_json_file` 做修改；"
+                    "修改后用 `run_shell`、`run_cmd` 或 `run_powershell` 执行验证。"
+                    "不要跳过读取上下文直接盲改；不要只给修复建议而不动手。"
+                    "面对大文件或长代码文件时，先 `search_text` 定位，再用 `read_file(start_line=..., end_line=...)` 分段读取，优先每段 50 到 200 行。"
+                    "如果第一段上下文不够，再围绕命中位置继续扩读，不要默认整文件通读。"
+                    "小范围改动优先精确修改工具，只有在必要时才整体重写。"
+                    "修改前先读局部上下文，修改后再回读目标片段确认结果。"
+                    f"{root_hint}"
+                    f"当前任务：{task}"
+                ),
+            }
+        ]
+
+    @mcp.prompt(
+        name="network_diagnostics_operator",
+        title="网络排查提示",
+        description="指导模型如何组合网络配置、解析、连通性、HTTP 和端口工具完成网络排查。",
+    )
+    def network_diagnostics_operator(task: str, target: str = "") -> list[dict]:
+        target_hint = f"重点目标：{target}。" if target else ""
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "你正在执行网络排查任务。"
+                    "工具就是你的观测和诊断能力，应主动分层排查。"
+                    "推荐顺序：先用 `get_network_config` 和 `list_network_adapters` 看本机网络状态；"
+                    "再用 `dns_lookup` 看解析；"
+                    "再用 `ping_host` 看主机可达；"
+                    "再用 `tcp_connect` 看端口可达；"
+                    "最后用 `http_request` 看应用层接口是否正常。"
+                    "如果要查本机监听或端口占用，再用 `list_listening_ports` 或 `find_port_process`。"
+                    "不要把解析、主机、端口、HTTP 混在一起猜，应按层逐步验证。"
+                    "网络工具默认要主动考虑 `timeout_ms`。"
+                    f"{target_hint}"
+                    f"当前任务：{task}"
+                ),
+            }
+        ]
+
+    return mcp
