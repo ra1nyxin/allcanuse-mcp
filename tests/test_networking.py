@@ -13,6 +13,7 @@ from typing import Callable
 from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
+from allcanuse_mcp.core.networking import DEFAULT_HTTP_USER_AGENT
 from allcanuse_mcp.core.networking import download_file
 from allcanuse_mcp.core.networking import extract_links_from_webpage
 from allcanuse_mcp.core.networking import extract_webpage_elements
@@ -20,6 +21,7 @@ from allcanuse_mcp.core.networking import fetch_response_headers
 from allcanuse_mcp.core.networking import fetch_webpage_text
 from allcanuse_mcp.core.networking import get_tls_certificate
 from allcanuse_mcp.core.networking import http_head
+from allcanuse_mcp.core.networking import http_request
 from allcanuse_mcp.core.networking import list_established_connections
 from allcanuse_mcp.core.networking import raw_tcp_exchange
 from allcanuse_mcp.core.networking import scan_ports
@@ -146,6 +148,19 @@ class NetworkingTests(unittest.TestCase):
         self.assertEqual(result["headers"].get("ETag") or result["headers"].get("Etag"), '"demo-etag"')
         self.assertEqual(result["content_type"], "text/plain; charset=utf-8")
 
+    def test_http_request_sends_default_user_agent(self) -> None:
+        def handler(request: http.server.BaseHTTPRequestHandler) -> tuple[int, dict[str, str], str]:
+            return (
+                200,
+                {"Content-Type": "text/plain; charset=utf-8"},
+                request.headers.get("User-Agent", ""),
+            )
+
+        with _local_http_site({"ua": handler}) as base_url:
+            result = http_request(url=f"{base_url}/ua")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["body"], DEFAULT_HTTP_USER_AGENT)
+
     def test_fetch_response_headers_supports_get_probe(self) -> None:
         with _local_http_site(
             {
@@ -163,6 +178,25 @@ class NetworkingTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["headers"]["X-Test"], "headers-only")
         self.assertEqual(result["content_type"], "application/json; charset=utf-8")
+
+    def test_submit_web_form_allows_custom_user_agent_override(self) -> None:
+        def handler(request: http.server.BaseHTTPRequestHandler) -> tuple[int, dict[str, str], str]:
+            return (
+                200,
+                {"Content-Type": "text/plain; charset=utf-8"},
+                request.headers.get("User-Agent", ""),
+            )
+
+        with _local_http_site({"submit": handler}) as base_url:
+            result = submit_web_form(
+                url=f"{base_url}/submit",
+                method="GET",
+                form_fields={"q": "ua"},
+                headers={"user-agent": "MyCustomAgent/1.0"},
+                timeout_ms=5000,
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["body"], "MyCustomAgent/1.0")
 
     def test_submit_web_form_posts_urlencoded_fields(self) -> None:
         def handler(request: http.server.BaseHTTPRequestHandler) -> tuple[int, dict[str, str], str]:

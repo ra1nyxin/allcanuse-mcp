@@ -1033,6 +1033,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `timeout_ms`: 下载超时毫秒数，模型可自行按需设定
         - `overwrite`: 目标已存在时是否覆盖
 
+        说明：
+        - 默认会带常规 `User-Agent`
+        - 如果目标站点要求特殊请求头，可在 `headers` 中自行覆盖默认值
+
         调用示例：
         - `download_file(url="https://example.com/file.zip", destination="downloads/file.zip")`
         """,
@@ -1049,6 +1053,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `max_body_chars`: 响应体最大返回长度
         - `save_to`: 可选文件路径，用于保存原始响应体
 
+        说明：
+        - 默认会带常规 `User-Agent`
+        - 如果接口对 `User-Agent`、`Authorization`、`Cookie` 等有特殊要求，可在 `headers` 中覆盖或补充
+
         调用示例：
         - `http_request(url="http://127.0.0.1:8000/health")`
         """,
@@ -1060,6 +1068,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `url`: 目标地址
         - `headers`: 可选请求头
         - `timeout_ms`: 超时毫秒数
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 想先看 `Content-Type`、`Content-Length`、`ETag`、`Last-Modified`
@@ -1079,6 +1090,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `headers`: 可选请求头
         - `body`: 可选字符串请求体；某些接口需要带请求体才能返回目标响应头
         - `timeout_ms`: 超时毫秒数
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 服务不支持 `HEAD`，但想先检查响应头
@@ -1101,6 +1115,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `timeout_ms`: 超时毫秒数
         - `max_body_chars`: 最多返回多少正文字符
         - `save_to`: 可选，把响应正文保存到本地文件
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 模拟网页搜索框或普通表单提交
@@ -1128,6 +1145,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `max_body_chars`: 最多返回多少响应正文字符
         - `save_to`: 可选，把服务器响应正文保存到本地文件
 
+        说明：
+        - 默认会带常规 `User-Agent`
+
         适用场景：
         - 向普通网页上传接口、管理后台、测试接口上传文件
         - 先用 `zip_paths` 打包多个文件，再上传压缩包
@@ -1146,6 +1166,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `headers`: 可选请求头
         - `timeout_ms`: 单跳超时毫秒数
         - `max_hops`: 最多追踪多少跳
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 排查登录跳转、CDN 跳转、域名跳转、HTTP 到 HTTPS 跳转
@@ -1204,10 +1227,13 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         """
         输入：
         - `url`: 网页地址
-        - `headers`: 可选请求头，例如自定义 `User-Agent`
+        - `headers`: 可选请求头，例如覆盖默认 `User-Agent`
         - `timeout_ms`: 请求超时毫秒数
         - `max_text_chars`: 最多返回多少个正文字符
         - `include_title`: 是否返回网页标题
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 读取新闻、文档、博客、说明页的文字内容
@@ -1226,6 +1252,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `headers`: 可选请求头
         - `timeout_ms`: 请求超时毫秒数
         - `max_markdown_chars`: 最多返回多少个 Markdown 字符
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 想把网页正文转换成更干净、层次更明显的 Markdown
@@ -1248,6 +1277,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `max_links`: 最多返回多少条链接
         - `link_text_max_chars`: 单条链接文字最大长度
 
+        说明：
+        - 默认会带常规 `User-Agent`
+
         适用场景：
         - 想快速列出网页所有导航、文档入口、下载入口
         - 想按链接文字或链接地址筛选特定链接
@@ -1267,6 +1299,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `timeout_ms`: 请求超时毫秒数
         - `max_tables`: 最多返回多少个表格
         - `max_rows_per_table`: 每个表格最多返回多少行
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         适用场景：
         - 网页里有参数表、价格表、说明表、统计表
@@ -1288,6 +1323,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `timeout_ms`: 请求超时毫秒数
         - `max_elements`: 最多返回多少个元素
         - `text_max_chars`: 每个元素最多返回多少个文本字符
+
+        说明：
+        - 默认会带常规 `User-Agent`
 
         返回：
         - 标签名、属性字典、元素文本、以及可能的 `href` / `src` 绝对地址

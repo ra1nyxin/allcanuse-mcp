@@ -22,6 +22,32 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 
+def _build_default_user_agent() -> str:
+    system = platform.system().lower()
+    machine = (platform.machine() or "x86_64").lower()
+    if system == "windows":
+        platform_token = "Windows NT 10.0; Win64; x64"
+    elif system == "linux":
+        platform_token = f"X11; Linux {machine}"
+    elif system == "darwin":
+        platform_token = "Macintosh; Intel Mac OS X 10_15_7"
+    else:
+        platform_token = f"{platform.system()} {machine}".strip()
+    return (
+        "Mozilla/5.0 "
+        f"({platform_token}) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/136.0.0.0 Safari/537.36 "
+        "allcanuse-mcp/0.1.0"
+    )
+
+
+DEFAULT_HTTP_USER_AGENT = _build_default_user_agent()
+_DEFAULT_HTTP_HEADERS = {
+    "User-Agent": DEFAULT_HTTP_USER_AGENT,
+}
+
+
 _DNS_TYPE_TO_CODE = {
     "A": 1,
     "NS": 2,
@@ -48,6 +74,29 @@ class _NoRedirectHandler(HTTPRedirectHandler):
         return None
 
 
+def _find_header_name(headers: dict[str, str], name: str) -> str | None:
+    lowered = name.casefold()
+    for existing_name in headers:
+        if existing_name.casefold() == lowered:
+            return existing_name
+    return None
+
+
+def _set_default_header(headers: dict[str, str], name: str, value: str) -> None:
+    if _find_header_name(headers, name) is None:
+        headers[name] = value
+
+
+def _merge_http_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    merged = dict(_DEFAULT_HTTP_HEADERS)
+    for header_name, header_value in (headers or {}).items():
+        existing_name = _find_header_name(merged, str(header_name))
+        if existing_name is not None:
+            del merged[existing_name]
+        merged[str(header_name)] = "" if header_value is None else str(header_value)
+    return merged
+
+
 def _fetch_url(
     *,
     url: str,
@@ -57,7 +106,7 @@ def _fetch_url(
     timeout_ms: int = 15_000,
 ) -> dict[str, Any]:
     data = body.encode("utf-8") if body is not None else None
-    request = Request(url=url, method=method.upper(), data=data, headers=headers or {})
+    request = Request(url=url, method=method.upper(), data=data, headers=_merge_http_headers(headers))
     with urlopen(request, timeout=max(timeout_ms, 1) / 1000) as response:
         raw = response.read()
         content_type = response.headers.get("Content-Type", "")
@@ -84,7 +133,7 @@ def _fetch_response_headers(
     body: bytes | None = None,
     timeout_ms: int = 15_000,
 ) -> dict[str, Any]:
-    request = Request(url=url, method=method.upper(), data=body, headers=headers or {})
+    request = Request(url=url, method=method.upper(), data=body, headers=_merge_http_headers(headers))
     with urlopen(request, timeout=max(timeout_ms, 1) / 1000) as response:
         return {
             "status": response.status,
@@ -314,7 +363,7 @@ def _perform_websocket_handshake(
         request_lines.append(f"Origin: {origin}")
     if subprotocols:
         request_lines.append(f"Sec-WebSocket-Protocol: {', '.join(subprotocols)}")
-    for header_name, header_value in (headers or {}).items():
+    for header_name, header_value in _merge_http_headers(headers).items():
         request_lines.append(f"{header_name}: {header_value}")
     sock.sendall(("\r\n".join(request_lines) + "\r\n\r\n").encode("utf-8"))
 
@@ -1018,7 +1067,7 @@ def submit_web_form(
     save_to: str | None = None,
 ) -> dict[str, Any]:
     method_name = method.upper()
-    request_headers = dict(headers or {})
+    request_headers = _merge_http_headers(headers)
     request_url = url
     body: bytes | None = None
     content_type = ""
@@ -1027,7 +1076,7 @@ def submit_web_form(
         request_url = _append_query_params(url, form_fields)
     elif method_name == "POST":
         body, content_type = _encode_form_payload(form_fields, encoding=encoding)
-        request_headers.setdefault("Content-Type", content_type)
+        _set_default_header(request_headers, "Content-Type", content_type)
     else:
         raise ValueError("submit_web_form only supports GET or POST")
 
@@ -1106,7 +1155,7 @@ def upload_file(
         raise ValueError(f"Path is not a file: {source_path}")
 
     file_bytes = source_path.read_bytes()
-    request_headers = dict(headers or {})
+    request_headers = _merge_http_headers(headers)
     method_name = method.upper()
     mode = upload_mode.lower()
     resolved_filename = remote_filename or source_path.name
@@ -1120,17 +1169,17 @@ def upload_file(
             file_content_type=resolved_content_type,
             form_fields=form_fields,
         )
-        request_headers.setdefault("Content-Type", request_content_type)
+        _set_default_header(request_headers, "Content-Type", request_content_type)
     elif mode == "raw":
         if form_fields:
             raise ValueError("form_fields are only supported when upload_mode is multipart")
         body = file_bytes
-        request_headers.setdefault("Content-Type", resolved_content_type)
+        _set_default_header(request_headers, "Content-Type", resolved_content_type)
     else:
         raise ValueError("upload_mode must be multipart or raw")
 
     sha256 = hashlib.sha256(file_bytes).hexdigest()
-    request_headers.setdefault("Content-Length", str(len(body)))
+    _set_default_header(request_headers, "Content-Length", str(len(body)))
 
     try:
         request = Request(url=url, method=method_name, data=body, headers=request_headers)
@@ -1219,7 +1268,7 @@ def download_file(
         raise FileExistsError(f"Destination already exists: {destination_path}")
     destination_path.parent.mkdir(parents=True, exist_ok=True)
 
-    request = Request(url=url, method="GET", headers=headers or {})
+    request = Request(url=url, method="GET", headers=_merge_http_headers(headers))
     try:
         with urlopen(request, timeout=max(timeout_ms, 1) / 1000) as response:
             data = response.read()
@@ -1264,7 +1313,7 @@ def trace_http_redirects(
     chain: list[dict[str, Any]] = []
     current_url = url
     for hop in range(max_hops + 1):
-        request = Request(url=current_url, method="GET", headers=headers or {})
+        request = Request(url=current_url, method="GET", headers=_merge_http_headers(headers))
         try:
             with opener.open(request, timeout=max(timeout_ms, 1) / 1000) as response:
                 chain.append(
