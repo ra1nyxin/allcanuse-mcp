@@ -55,12 +55,12 @@ allcanuse-mcp
 
 如果你要把当前 MCP 接到不同客户端，建议优先看：
 
-- `LM Studio`：`docs/LM-STUDIO.zh-CN.md`
-- `全部工具清单`：`docs/TOOLS.zh-CN.md`
-- `ChatGPT Codex / Codex CLI`：`docs/CLIENT-INTEGRATIONS.zh-CN.md`
-- `Claude Code`：`docs/CLIENT-INTEGRATIONS.zh-CN.md`
-- `OpenCode`：`docs/CLIENT-INTEGRATIONS.zh-CN.md`
-- `发布后最终用户安装与接入`：`docs/RELEASE-USAGE.zh-CN.md`
+- [LM Studio](./docs/LM-STUDIO.zh-CN.md)
+- [全部工具清单](./docs/TOOLS.zh-CN.md)
+- [ChatGPT Codex / Codex CLI](./docs/CLIENT-INTEGRATIONS.zh-CN.md)
+- [Claude Code](./docs/CLIENT-INTEGRATIONS.zh-CN.md)
+- [OpenCode](./docs/CLIENT-INTEGRATIONS.zh-CN.md)
+- [发布后最终用户安装与接入](./docs/RELEASE-USAGE.zh-CN.md)
 
 ## 可选依赖
 
