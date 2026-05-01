@@ -5,10 +5,14 @@ import os
 from datetime import datetime, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from allcanuse_mcp.core.command_runner import run_cmd
 from allcanuse_mcp.core.command_runner import run_shell
+from allcanuse_mcp.core import linux_fallbacks
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 
 
@@ -16,7 +20,24 @@ def register(mcp) -> None:
     @mcp.tool(description=TOOL_DESCRIPTIONS["get_system_info"])
     def get_system_info() -> dict:
         uname = platform.uname()
-        memory = psutil.virtual_memory()
+        if psutil is not None:
+            memory = psutil.virtual_memory()
+            cpu_count_logical = psutil.cpu_count(logical=True)
+            cpu_count_physical = psutil.cpu_count(logical=False)
+            boot_time = datetime.fromtimestamp(psutil.boot_time()).astimezone().isoformat()
+        elif linux_fallbacks.linux_procfs_available():
+            memory = linux_fallbacks.get_virtual_memory()
+            cpu_count_logical = os.cpu_count()
+            cpu_count_physical = linux_fallbacks.get_cpu_count_physical()
+            boot_time_ts = linux_fallbacks.get_boot_time()
+            boot_time = (
+                datetime.fromtimestamp(boot_time_ts).astimezone().isoformat() if boot_time_ts is not None else None
+            )
+        else:
+            memory = {"total": None, "available": None, "percent": None}
+            cpu_count_logical = os.cpu_count()
+            cpu_count_physical = None
+            boot_time = None
         return {
             "platform": platform.platform(),
             "system": uname.system,
@@ -26,12 +47,12 @@ def register(mcp) -> None:
             "processor": uname.processor,
             "hostname": uname.node,
             "python_version": platform.python_version(),
-            "cpu_count_logical": psutil.cpu_count(logical=True),
-            "cpu_count_physical": psutil.cpu_count(logical=False),
-            "memory_total": memory.total,
-            "memory_available": memory.available,
-            "memory_percent": memory.percent,
-            "boot_time": datetime.fromtimestamp(psutil.boot_time()).astimezone().isoformat(),
+            "cpu_count_logical": cpu_count_logical,
+            "cpu_count_physical": cpu_count_physical,
+            "memory_total": getattr(memory, "total", None) if psutil is not None else memory.get("total"),
+            "memory_available": getattr(memory, "available", None) if psutil is not None else memory.get("available"),
+            "memory_percent": getattr(memory, "percent", None) if psutil is not None else memory.get("percent"),
+            "boot_time": boot_time,
             "current_working_directory": os.getcwd(),
         }
 
@@ -60,13 +81,24 @@ def register(mcp) -> None:
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["get_disk_usage"])
     def get_disk_usage(path: str = ".") -> dict:
-        usage = psutil.disk_usage(path)
+        if psutil is not None:
+            usage = psutil.disk_usage(path)
+            total = usage.total
+            used = usage.used
+            free = usage.free
+            percent = usage.percent
+        else:
+            usage = linux_fallbacks.get_disk_usage(path)
+            total = usage["total"]
+            used = usage["used"]
+            free = usage["free"]
+            percent = usage["percent"]
         return {
             "path": path,
-            "total": usage.total,
-            "used": usage.used,
-            "free": usage.free,
-            "percent": usage.percent,
+            "total": total,
+            "used": used,
+            "free": free,
+            "percent": percent,
         }
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["get_network_config"])
@@ -83,8 +115,11 @@ def register(mcp) -> None:
 
 
 def _collect_network_adapters() -> dict:
-    addrs = psutil.net_if_addrs()
-    stats = psutil.net_if_stats()
+    if psutil is None and linux_fallbacks.linux_procfs_available():
+        return linux_fallbacks.list_network_adapters()
+
+    addrs = psutil.net_if_addrs() if psutil is not None else {}
+    stats = psutil.net_if_stats() if psutil is not None else {}
     adapters: list[dict] = []
     for name, addr_list in addrs.items():
         adapter = {

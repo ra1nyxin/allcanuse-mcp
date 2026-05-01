@@ -12,8 +12,12 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
+from allcanuse_mcp.core import linux_fallbacks
 from allcanuse_mcp.core.windows import list_windows_info
 
 
@@ -414,6 +418,9 @@ def _check_file_condition(condition: dict[str, Any]) -> dict[str, Any]:
 
 
 def _find_matching_processes(pid: int | None, name: str | None) -> list[dict[str, Any]]:
+    if psutil is None and linux_fallbacks.linux_procfs_available():
+        return linux_fallbacks.find_matching_processes(pid=pid, name=name)
+
     matches: list[dict[str, Any]] = []
     for proc in psutil.process_iter(["pid", "name", "status"]):
         try:

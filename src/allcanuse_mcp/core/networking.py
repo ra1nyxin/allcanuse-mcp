@@ -21,6 +21,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
+from allcanuse_mcp.core import linux_fallbacks
+
 
 def _build_default_user_agent() -> str:
     system = platform.system().lower()
@@ -2068,7 +2070,12 @@ def scan_ports(
 
 
 def list_established_connections(limit: int = 200) -> dict[str, Any]:
-    import psutil
+    try:
+        import psutil
+    except ImportError:
+        if os.name != "nt":
+            return linux_fallbacks.list_established_connections(limit=limit)
+        raise
 
     connections = []
     for conn in psutil.net_connections(kind="inet"):
@@ -2101,7 +2108,12 @@ def list_established_connections(limit: int = 200) -> dict[str, Any]:
 
 
 def list_listening_ports() -> dict[str, Any]:
-    import psutil
+    try:
+        import psutil
+    except ImportError:
+        if os.name != "nt":
+            return linux_fallbacks.list_listening_ports()
+        raise
 
     listeners = []
     for conn in psutil.net_connections(kind="inet"):

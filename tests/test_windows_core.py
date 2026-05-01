@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from mcp.types import CallToolResult
+
 from allcanuse_mcp.core import windows
+from allcanuse_mcp.tools import windows as window_tools
 
 
 class WindowsCoreTests(unittest.TestCase):
@@ -94,6 +98,36 @@ class WindowsCoreTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["skipped_count"], 1)
+
+    def test_capture_screenshot_tool_can_return_image_content(self) -> None:
+        class DummyMCP:
+            def tool(self, **_kwargs):
+                def decorator(func):
+                    setattr(self, func.__name__, func)
+                    return func
+
+                return decorator
+
+        mcp = DummyMCP()
+        window_tools.register(mcp)
+        fake_result = {
+            "ok": True,
+            "platform": "Linux",
+            "path": "C:/tmp/test-screenshot.png",
+            "width": 800,
+            "height": 600,
+        }
+        with patch.object(window_tools, "capture_desktop_screenshot", return_value=fake_result), patch(
+            "allcanuse_mcp.core.vision_payloads.Path.resolve",
+            return_value=Path("C:/tmp/test-screenshot.png"),
+        ), patch(
+            "builtins.open",
+            create=True,
+        ) as mocked_open:
+            mocked_open.return_value.__enter__.return_value.read.return_value = b"fakepng"
+            result = mcp.capture_screenshot(return_image_content=True)
+        self.assertIsInstance(result, CallToolResult)
+        self.assertEqual(result.content[-1].type, "image")
 
 
 if __name__ == "__main__":

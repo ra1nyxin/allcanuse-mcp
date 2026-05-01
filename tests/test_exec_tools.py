@@ -3,6 +3,7 @@ from __future__ import annotations
 import socket
 import threading
 import unittest
+from unittest.mock import patch
 
 from allcanuse_mcp.tools import exec as exec_tools
 
@@ -47,6 +48,34 @@ class ExecToolTests(unittest.TestCase):
 
         self.assertTrue(result["found"])
         self.assertEqual(result["port"], port)
+
+    def test_find_port_process_linux_fallback_without_psutil(self) -> None:
+        expected = {"found": True, "port": 8000, "pid": 123}
+        with patch.object(exec_tools, "psutil", None), patch.object(
+            exec_tools.linux_fallbacks,
+            "linux_procfs_available",
+            return_value=True,
+        ), patch.object(
+            exec_tools.linux_fallbacks,
+            "find_port_process",
+            return_value=expected,
+        ):
+            result = self.mcp.find_port_process(8000)
+        self.assertEqual(result, expected)
+
+    def test_get_process_tree_linux_fallback_without_psutil(self) -> None:
+        expected = {"root": {"pid": 1}, "children": []}
+        with patch.object(exec_tools, "psutil", None), patch.object(
+            exec_tools.linux_fallbacks,
+            "linux_procfs_available",
+            return_value=True,
+        ), patch.object(
+            exec_tools.linux_fallbacks,
+            "get_process_tree",
+            return_value=expected,
+        ):
+            result = self.mcp.get_process_tree(pid=1, max_depth=2)
+        self.assertEqual(result, expected)
 
 
 if __name__ == "__main__":

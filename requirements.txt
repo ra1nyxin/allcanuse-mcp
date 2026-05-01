@@ -1,0 +1,18 @@
+# Minimal runtime dependencies for an initial installation.
+# Usage:
+#   pip install -r requirements.txt
+#
+# Notes:
+# - Linux core features can run without psutil/Pillow now.
+# - Windows installs psutil + pywin32 + Pillow automatically via platform markers.
+# - Camera features are optional and usually need opencv-python.
+# - Some Linux desktop features still rely on system commands such as:
+#   wmctrl, xprop, gnome-screenshot, scrot, or imagemagick.
+
+mcp>=1.27.0
+psutil>=5.9.0; platform_system == "Windows"
+pywin32>=306; platform_system == "Windows"
+Pillow>=10.0.0; platform_system == "Windows"
+
+# Optional Python package for camera tools:
+# opencv-python>=4.9.0

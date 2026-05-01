@@ -3,11 +3,15 @@ from __future__ import annotations
 import os
 import subprocess
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from allcanuse_mcp.core.command_runner import run_cmd as run_cmd_impl
 from allcanuse_mcp.core.command_runner import run_powershell as run_powershell_impl
 from allcanuse_mcp.core.command_runner import run_shell as run_shell_impl
+from allcanuse_mcp.core import linux_fallbacks
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 
 
@@ -92,6 +96,10 @@ def register(mcp) -> None:
         if pid is None and not name:
             raise ValueError("Either pid or name must be provided.")
 
+        if psutil is None and linux_fallbacks.linux_procfs_available():
+            killed = linux_fallbacks.kill_processes(pid=pid, name=name, force=force)
+            return {"requested_pid": pid, "requested_name": name, "killed": killed, "count": len(killed)}
+
         killed: list[dict] = []
         candidates = []
         if pid is not None:
@@ -116,6 +124,10 @@ def register(mcp) -> None:
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["list_processes"])
     def list_processes(name_filter: str | None = None, limit: int = 200) -> dict:
+        if psutil is None and linux_fallbacks.linux_procfs_available():
+            matched = linux_fallbacks.list_processes(limit=limit, name_filter=name_filter)
+            return {"count": len(matched), "processes": matched}
+
         matched = []
         lowered = name_filter.lower() if name_filter else None
         for process in psutil.process_iter(["pid", "name", "status", "cpu_percent", "memory_info", "exe"]):
@@ -139,6 +151,10 @@ def register(mcp) -> None:
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["get_process_tree"])
     def get_process_tree(pid: int | None = None, max_depth: int = 5) -> dict:
+        if psutil is None and linux_fallbacks.linux_procfs_available():
+            target_pid = pid if pid is not None else os.getpid()
+            return linux_fallbacks.get_process_tree(target_pid, max_depth=max_depth)
+
         target = psutil.Process(pid) if pid is not None else psutil.Process()
         return {
             "root": _process_to_dict(target),
@@ -147,6 +163,10 @@ def register(mcp) -> None:
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["find_port_process"])
     def find_port_process(port: int) -> dict:
+        if psutil is None and linux_fallbacks.linux_procfs_available():
+            result = linux_fallbacks.find_port_process(port)
+            return result or {"found": False, "port": port}
+
         for conn in psutil.net_connections(kind="inet"):
             if not conn.laddr or conn.laddr.port != port:
                 continue

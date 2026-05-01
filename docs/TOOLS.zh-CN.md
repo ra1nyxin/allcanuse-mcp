@@ -21,8 +21,8 @@ list_all_tools(include_descriptions=true)
 
 | 工具名 | 一句话作用 |
 | --- | --- |
-| `capture_camera_photo` | 调用指定摄像头拍摄一张照片并保存到本地。 |
-| `capture_screenshot` | 截取当前桌面截图并保存到本地文件。 |
+| `capture_camera_photo` | 调用指定摄像头拍摄一张照片；既可保存到本地，也可在支持视觉内容的客户端里直接把图像随工具结果返回给模型。 |
+| `capture_screenshot` | 截取当前桌面截图；既可保存到本地，也可在支持视觉内容的客户端里直接把图像随工具结果返回给模型。 |
 | `copy_path` | 复制文件或目录。 |
 | `delete_path` | 删除文件或目录。 |
 | `dns_lookup` | 解析域名对应的 IP 地址。 |
@@ -232,7 +232,7 @@ read_file(path="src/service.py", start_line=150, end_line=175)
 | 工具名 | 用途 | 常见关键参数 | 示例 |
 | --- | --- | --- | --- |
 | `list_cameras` | 枚举可访问的摄像头设备 | `max_devices` | `list_cameras(max_devices=8)` |
-| `capture_camera_photo` | 调用摄像头拍照并保存 | `camera_index`, `output_path` | `capture_camera_photo(camera_index=0)` |
+| `capture_camera_photo` | 调用摄像头拍照并保存，必要时直接返回图像内容 | `camera_index`, `output_path`, `return_image_content`, `include_image_preview_text` | `capture_camera_photo(camera_index=0, return_image_content=true)` |
 
 ## 5. 值班与等待类工具
 
@@ -274,7 +274,7 @@ read_file(path="src/service.py", start_line=150, end_line=175)
 | `list_windows` | 枚举窗口标题、句柄、进程和前后台状态 | `include_invisible`, `title_filter`, `limit` | `list_windows(title_filter="Chrome")` |
 | `get_active_window` | 读取当前前台窗口信息 | 无 | `get_active_window()` |
 | `get_desktop_context` | 一次返回前台窗口和后台窗口列表 | `limit`, `include_invisible` | `get_desktop_context(limit=50)` |
-| `capture_screenshot` | 截取当前桌面截图并保存 | `output_path`, `all_screens` | `capture_screenshot(all_screens=true)` |
+| `capture_screenshot` | 截取当前桌面截图并保存，必要时直接返回图像内容 | `output_path`, `all_screens`, `return_image_content`, `include_image_preview_text` | `capture_screenshot(all_screens=true, return_image_content=true)` |
 
 ## 7. 网络与网页类工具
 
@@ -316,7 +316,7 @@ read_file(path="src/service.py", start_line=150, end_line=175)
 2. 再调 `get_system_info()`、`get_env()`、`get_network_config()` 了解环境。
 3. 处理代码或文本时优先用 `list_tree()`、`find_files()`、`search_text()`、`read_file()`、`patch_lines()`。
 4. 长代码文件先搜索再按行分段读取，不要默认整文件读取。
-4. 处理桌面任务时优先用 `get_desktop_context()` 和 `capture_screenshot()`。
+4. 处理桌面任务时优先用 `get_desktop_context()`；需要模型直接理解截图时优先 `capture_screenshot(return_image_content=true)`。
 5. 需要值班或用户长时间离线时，优先把长期等待动作转成 `create_background_task()`，并配合 `create_task_plan()`、`append_task_event()`、`record_task_artifact()` 记录过程；重新接手时优先看 `get_task_handoff()`。
 6. 处理网页时优先用 `trace_http_redirects()`、`http_head()` 或 `fetch_response_headers()` 先看头部，再用 `fetch_webpage_text()`、`webpage_to_markdown()` 读正文；找链接时再用 `extract_links_from_webpage()`，需要表格时用 `extract_tables_from_webpage()`，需要精确抓标签时再用 `extract_webpage_elements()`，需要提交表单时用 `submit_web_form()`，需要上传本地文件时用 `upload_file()`。
 7. 网络或长时任务尽量显式传 `timeout_ms`。

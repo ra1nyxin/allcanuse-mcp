@@ -43,6 +43,20 @@ pip install -e .
 allcanuse-mcp
 ```
 
+### 方式三：先一键安装基础依赖
+
+如果你只是想先把当前项目运行起来，也可以先安装根目录的依赖清单：
+
+```bash
+pip install -r requirements.txt
+```
+
+再启动：
+
+```bash
+python run_server.py --transport stdio
+```
+
 ## 4. 常用启动参数
 
 ### `stdio`
@@ -154,6 +168,12 @@ list_all_tools(include_descriptions=true)
 - `get_active_window`
 - `get_desktop_context`
 - `capture_screenshot`
+
+补充：
+
+- `capture_screenshot(return_image_content=true)` 可在支持视觉内容的 MCP 客户端里直接把图像传给模型
+- `capture_camera_photo(return_image_content=true)` 也是同样思路
+- 如果客户端不支持图像内容，工具仍会返回图片文件路径、尺寸等结构化信息，不影响继续处理
 
 ### 网络类
 

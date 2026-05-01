@@ -5,7 +5,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from mcp.types import CallToolResult
+
 from allcanuse_mcp.core import device
+from allcanuse_mcp.tools import device as device_tools
 
 
 class FakeCapture:
@@ -78,6 +81,27 @@ class DeviceTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(output.exists())
         output.unlink()
+
+    def test_capture_camera_photo_tool_can_return_image_content(self) -> None:
+        class DummyMCP:
+            def tool(self, **_kwargs):
+                def decorator(func):
+                    setattr(self, func.__name__, func)
+                    return func
+
+                return decorator
+
+        fake_cv2 = FakeCV2([FakeCapture(frame=FakeFrame())])
+        output = Path(tempfile.gettempdir(), "allcanuse-camera-tool-test.png")
+        if output.exists():
+            output.unlink()
+        mcp = DummyMCP()
+        device_tools.register(mcp)
+        with patch.object(device, "cv2", fake_cv2), patch("allcanuse_mcp.core.device.cv2", fake_cv2):
+            result = mcp.capture_camera_photo(output_path=str(output), return_image_content=True)
+        self.assertIsInstance(result, CallToolResult)
+        self.assertEqual(result.content[-1].type, "image")
+        output.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

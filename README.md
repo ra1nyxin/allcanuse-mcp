@@ -63,6 +63,12 @@ pip install -e .
 allcanuse-mcp
 ```
 
+如果想先一键安装当前项目最基础的运行依赖，也可以：
+
+```powershell
+pip install -r requirements.txt
+```
+
 ## 文档
 
 - 通用使用说明：[docs/USAGE.zh-CN.md](./docs/USAGE.zh-CN.md)
@@ -84,9 +90,22 @@ allcanuse-mcp
 ## 可选依赖
 
 - 摄像头功能依赖 `opencv-python`
+- Windows 下截图能力默认依赖 `Pillow`
+- Windows 下进程、端口、系统信息增强依赖 `psutil` 与 `pywin32`
 - Linux 窗口枚举依赖 `wmctrl`
 - Linux 活动窗口查询依赖 `xprop`
 - Linux 截图可能使用 `gnome-screenshot`、`scrot` 或 `imagemagick`
+
+补充说明：
+
+- Linux 现在即使不安装 `psutil`，核心系统信息、进程查询、端口查询、监听端口、已建立连接等能力也能通过底层 `/proc` 与 `/sys` 回退实现继续工作
+- Linux 下截图、窗口枚举、前台窗口查询、摄像头这类能力仍然主要依赖系统图形环境或额外工具
+
+关于图像如何传给模型：
+
+- `capture_screenshot` 和 `capture_camera_photo` 现在不只会返回本地文件路径
+- 如果调用时把 `return_image_content=true`，在支持视觉内容的 MCP 客户端里，工具结果会直接附带图像内容，模型可以直接看图
+- 如果客户端暂时不支持图像内容，工具仍会正常返回结构化元数据和本地路径，后续依然可以继续读取、上传、分析或交给其他支持视觉的链路处理
 
 ## 验证
 

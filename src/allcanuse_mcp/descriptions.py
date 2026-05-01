@@ -964,9 +964,16 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         输入：
         - `camera_index`: 摄像头索引，默认 `0`
         - `output_path`: 可选输出路径；留空时写入临时目录
+        - `return_image_content`: 若为 `true`，则在支持视觉内容的 MCP 客户端中直接返回图像内容
+        - `include_image_preview_text`: 当直接返回图像内容时，是否同时附带一段文本说明
+
+        使用建议：
+        - 如果后续模型需要真正“看图”，优先把 `return_image_content` 设为 `true`
+        - 如果当前客户端不支持图像内容，仍可使用返回的本地路径继续处理
 
         调用示例：
         - `capture_camera_photo()`
+        - `capture_camera_photo(return_image_content=True)`
         """,
     ),
     "list_windows": _doc(
@@ -1018,9 +1025,16 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         输入：
         - `output_path`: 可选输出路径；留空时写入临时目录
         - `all_screens`: 是否截取所有显示器
+        - `return_image_content`: 若为 `true`，则在支持视觉内容的 MCP 客户端中直接返回图像内容
+        - `include_image_preview_text`: 当直接返回图像内容时，是否同时附带一段文本说明
+
+        使用建议：
+        - 如果你希望带视觉能力的模型直接理解截图内容，优先把 `return_image_content` 设为 `true`
+        - 如果客户端只支持普通文本工具结果，也可以继续只拿文件路径
 
         调用示例：
         - `capture_screenshot()`
+        - `capture_screenshot(return_image_content=True)`
         """,
     ),
     "download_file": _doc(
@@ -1835,16 +1849,16 @@ def render_workflow_desktop_observation_markdown() -> str:
             "1. 先调 `get_desktop_context()`，一次拿到前台和后台窗口概况。",
             "2. 如果只关心当前活动窗口，再调 `get_active_window()`。",
             "3. 如果想按标题筛选特定窗口，再调 `list_windows(title_filter=...)`。",
-            "4. 如果需要视觉确认，再调 `capture_screenshot()` 保存截图。",
+            "4. 如果需要视觉确认，优先调 `capture_screenshot(return_image_content=true)`，这样支持视觉内容的客户端会直接把截图送给模型；不支持时再退回到保存路径模式。",
             "",
             "常见组合：",
             "- 了解当前桌面：`get_desktop_context`",
             "- 看某个应用是否打开：`list_windows(title_filter='Chrome')`",
-            "- 看窗口信息 + 截图：`get_active_window` -> `capture_screenshot`",
+            "- 看窗口信息 + 截图：`get_active_window` -> `capture_screenshot(return_image_content=true)`",
             "",
             "建议：",
             "- 如果窗口很多，可在 `get_desktop_context` 或 `list_windows` 中设置 `limit`。",
-            "- 截图工具返回的是路径，可继续交给支持视觉的模型读取。",
+            "- 支持视觉内容的客户端里，优先给截图和拍照工具传 `return_image_content=true`，让模型直接拿到图像；如果客户端不支持，工具仍会返回保存路径和结构化信息。",
         ]
     )
 

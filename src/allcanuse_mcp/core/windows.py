@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import os
 import platform
-import psutil
 import shutil
 import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+from allcanuse_mcp.core import linux_fallbacks
 
 try:
     from PIL import ImageGrab
@@ -37,12 +43,13 @@ def _window_info(hwnd: int) -> dict[str, Any]:
     _, pid = win32process.GetWindowThreadProcessId(hwnd)
     process_name = None
     process_exe = None
-    try:
-        process = psutil.Process(pid)
-        process_name = process.name()
-        process_exe = process.exe()
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        pass
+    if psutil is not None:
+        try:
+            process = psutil.Process(pid)
+            process_name = process.name()
+            process_exe = process.exe()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
     return {
         "hwnd": hwnd,
         "title": title,
@@ -352,17 +359,25 @@ def get_desktop_context(*, limit: int = 50, include_invisible: bool = False) -> 
 
 
 def _safe_process_name(pid: int) -> str | None:
-    try:
-        return psutil.Process(pid).name()
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return None
+    if psutil is not None:
+        try:
+            return psutil.Process(pid).name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+    if linux_fallbacks.linux_procfs_available():
+        return linux_fallbacks.safe_process_name(pid)
+    return None
 
 
 def _safe_process_exe(pid: int) -> str | None:
-    try:
-        return psutil.Process(pid).exe()
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return None
+    if psutil is not None:
+        try:
+            return psutil.Process(pid).exe()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+    if linux_fallbacks.linux_procfs_available():
+        return linux_fallbacks.safe_process_exe(pid)
+    return None
 
 
 def _get_linux_active_window_id() -> str | None:

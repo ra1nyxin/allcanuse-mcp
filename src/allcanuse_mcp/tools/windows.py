@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from allcanuse_mcp.core.windows import capture_desktop_screenshot
+from allcanuse_mcp.core.vision_payloads import build_image_tool_result
 from allcanuse_mcp.core.windows import get_desktop_context as get_desktop_context_impl
 from allcanuse_mcp.core.windows import get_active_window_info
 from allcanuse_mcp.core.windows import list_windows_info
@@ -29,5 +30,18 @@ def register(mcp) -> None:
         return get_desktop_context_impl(limit=limit, include_invisible=include_invisible)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["capture_screenshot"])
-    def capture_screenshot(output_path: str | None = None, all_screens: bool = True) -> dict:
-        return capture_desktop_screenshot(output_path, all_screens=all_screens)
+    def capture_screenshot(
+        output_path: str | None = None,
+        all_screens: bool = True,
+        return_image_content: bool = False,
+        include_image_preview_text: bool = True,
+    ):
+        result = capture_desktop_screenshot(output_path, all_screens=all_screens)
+        if return_image_content and result.get("ok") and result.get("path"):
+            summary = (
+                f"桌面截图已生成：{result['path']}，"
+                f"尺寸信息：{result.get('width') or '?'}x{result.get('height') or '?'}。"
+                "如果当前客户端支持视觉内容，这张图像已经随工具结果一并返回。"
+            )
+            return build_image_tool_result(result, summary=summary, include_text=include_image_preview_text)
+        return result
