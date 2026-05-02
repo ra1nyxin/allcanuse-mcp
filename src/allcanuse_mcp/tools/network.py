@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from allcanuse_mcp.core.networking import dns_lookup as dns_lookup_impl
 from allcanuse_mcp.core.networking import download_file as download_file_impl
+from allcanuse_mcp.core.networking import crawl_webpages as crawl_webpages_impl
 from allcanuse_mcp.core.networking import extract_links_from_webpage as extract_links_from_webpage_impl
+from allcanuse_mcp.core.networking import extract_webpage_metadata as extract_webpage_metadata_impl
 from allcanuse_mcp.core.networking import extract_webpage_elements as extract_webpage_elements_impl
 from allcanuse_mcp.core.networking import extract_tables_from_webpage as extract_tables_from_webpage_impl
 from allcanuse_mcp.core.networking import fetch_response_headers as fetch_response_headers_impl
@@ -193,6 +195,46 @@ def register(mcp) -> None:
             href_filter=href_filter,
             max_links=max_links,
             link_text_max_chars=link_text_max_chars,
+        )
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["extract_webpage_metadata"])
+    def extract_webpage_metadata(
+        url: str,
+        headers: dict[str, str] | None = None,
+        timeout_ms: int = 20_000,
+        include_json_ld: bool = True,
+    ) -> dict:
+        return extract_webpage_metadata_impl(
+            url=url,
+            headers=headers,
+            timeout_ms=timeout_ms,
+            include_json_ld=include_json_ld,
+        )
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["crawl_webpages"])
+    def crawl_webpages(
+        start_url: str,
+        headers: dict[str, str] | None = None,
+        timeout_ms: int = 20_000,
+        max_pages: int = 10,
+        max_depth: int = 2,
+        same_domain_only: bool = True,
+        include_patterns: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
+        max_text_chars_per_page: int = 8000,
+        max_links_per_page: int = 40,
+    ) -> dict:
+        return crawl_webpages_impl(
+            start_url=start_url,
+            headers=headers,
+            timeout_ms=timeout_ms,
+            max_pages=max_pages,
+            max_depth=max_depth,
+            same_domain_only=same_domain_only,
+            include_patterns=include_patterns,
+            exclude_patterns=exclude_patterns,
+            max_text_chars_per_page=max_text_chars_per_page,
+            max_links_per_page=max_links_per_page,
         )
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["extract_tables_from_webpage"])

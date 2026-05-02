@@ -130,7 +130,7 @@ list_all_tools(include_descriptions=true)
 | 想用摄像头 | `list_cameras` | `capture_camera_photo` |
 | 想下载文件或测接口 | `http_head`, `download_file`, `http_request` | `fetch_response_headers`, `submit_web_form`, `trace_http_redirects`, `dns_lookup`, `resolve_dns_records`, `ping_host`, `tcp_connect`, `get_tls_certificate`, `trace_route` |
 | 想把本地文件传到网络 | `upload_file` | `zip_paths`, `http_head`, `fetch_response_headers`, `http_request`, `submit_web_form`, `trace_http_redirects` |
-| 想读网页正文 | `trace_http_redirects`, `http_head`, `fetch_webpage_text`, `webpage_to_markdown` | `fetch_response_headers`, `extract_links_from_webpage`, `extract_tables_from_webpage`, `extract_webpage_elements`, `submit_web_form`, `download_file` |
+| 想读网页正文或深入站内内容 | `trace_http_redirects`, `http_head`, `fetch_webpage_text`, `webpage_to_markdown` | `fetch_response_headers`, `extract_links_from_webpage`, `extract_tables_from_webpage`, `extract_webpage_elements`, `submit_web_form`, `download_file` |
 | 想抓网页里的链接 | `extract_links_from_webpage` | `fetch_webpage_text`, `extract_webpage_elements` |
 | 想抓网页里的表格 | `extract_tables_from_webpage` | `fetch_webpage_text`, `webpage_to_markdown`, `extract_webpage_elements` |
 | 想抓网页里的指定元素 | `extract_webpage_elements` | `fetch_webpage_text`, `extract_links_from_webpage` |
@@ -318,7 +318,7 @@ read_file(path="src/service.py", start_line=150, end_line=175)
 4. 长代码文件先搜索再按行分段读取，不要默认整文件读取。
 4. 处理桌面任务时优先用 `get_desktop_context()`；需要模型直接理解截图时优先 `capture_screenshot(return_image_content=true)`。
 5. 需要值班或用户长时间离线时，优先把长期等待动作转成 `create_background_task()`，并配合 `create_task_plan()`、`append_task_event()`、`record_task_artifact()` 记录过程；重新接手时优先看 `get_task_handoff()`。
-6. 处理网页时优先用 `trace_http_redirects()`、`http_head()` 或 `fetch_response_headers()` 先看头部，再用 `fetch_webpage_text()`、`webpage_to_markdown()` 读正文；找链接时再用 `extract_links_from_webpage()`，需要表格时用 `extract_tables_from_webpage()`，需要精确抓标签时再用 `extract_webpage_elements()`，需要提交表单时用 `submit_web_form()`，需要上传本地文件时用 `upload_file()`。
+6. 处理网页时优先用 `trace_http_redirects()`、`http_head()` 或 `fetch_response_headers()` 先看头部，再用 `fetch_webpage_text()`、`webpage_to_markdown()` 读正文；找链接时再用 `extract_links_from_webpage()`，需要表格时用 `extract_tables_from_webpage()`，需要精确抓标签时再用 `extract_webpage_elements()`，需要提交表单时用 `submit_web_form()`，需要上传本地文件时用 `upload_file()`。如果当前页明显只是目录页、导航页、列表页、索引页或文档首页，就继续进入相关站内链接深入读取，不要只停在表面一页。
 7. 网络或长时任务尽量显式传 `timeout_ms`。
 
 ## 8. 额外说明

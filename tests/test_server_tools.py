@@ -30,6 +30,8 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("http_head", names)
         self.assertIn("fetch_response_headers", names)
         self.assertIn("fetch_webpage_text", names)
+        self.assertIn("extract_webpage_metadata", names)
+        self.assertIn("crawl_webpages", names)
         self.assertIn("submit_web_form", names)
         self.assertIn("upload_file", names)
         self.assertIn("extract_links_from_webpage", names)
@@ -76,10 +78,13 @@ class ServerToolTests(unittest.TestCase):
         self.assertIsNotNone(duty)
 
         self.assertIn("fetch_webpage_text", asyncio.run(web.read()))
+        self.assertIn("crawl_webpages", asyncio.run(web.read()))
         self.assertIn("patch_lines", asyncio.run(code.read()))
         self.assertIn("get_desktop_context", asyncio.run(desktop.read()))
         self.assertIn("tcp_connect", asyncio.run(network.read()))
         self.assertIn("get_task_handoff", asyncio.run(duty.read()))
+        self.assertIn("一小时", asyncio.run(duty.read()))
+        self.assertIn("get_scheduler_time", asyncio.run(duty.read()))
 
     def test_specialized_prompts_registered(self) -> None:
         server = create_server()
@@ -102,8 +107,15 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("create_background_task", duty_prompt[0]["content"])
         self.assertIn("get_task_handoff", duty_prompt[0]["content"])
         self.assertIn("fetch_webpage_text", web_prompt[0]["content"])
+        self.assertIn("crawl_webpages", web_prompt[0]["content"])
+        self.assertIn("不要停在这一页", web_prompt[0]["content"])
+        self.assertIn("继续进入其中最相关的站内链接", web_prompt[0]["content"])
         self.assertIn("patch_lines", code_prompt[0]["content"])
         self.assertIn("tcp_connect", network_prompt[0]["content"])
+        self.assertIn("create_background_task", duty_prompt[0]["content"])
+        self.assertIn("create_task_plan", duty_prompt[0]["content"])
+        self.assertIn("get_task_handoff", duty_prompt[0]["content"])
+        self.assertIn("一小时", duty_prompt[0]["content"])
 
 
 if __name__ == "__main__":

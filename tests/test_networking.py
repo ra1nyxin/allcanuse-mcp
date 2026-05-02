@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import http.server
 import os
 import socket
@@ -15,7 +16,9 @@ from urllib.parse import parse_qs, urlparse
 
 from allcanuse_mcp.core.networking import DEFAULT_HTTP_USER_AGENT
 from allcanuse_mcp.core.networking import download_file
+from allcanuse_mcp.core.networking import crawl_webpages
 from allcanuse_mcp.core.networking import extract_links_from_webpage
+from allcanuse_mcp.core.networking import extract_webpage_metadata
 from allcanuse_mcp.core.networking import extract_webpage_elements
 from allcanuse_mcp.core.networking import fetch_response_headers
 from allcanuse_mcp.core.networking import fetch_webpage_text
@@ -42,6 +45,9 @@ HTML_SAMPLE = """<!doctype html>
 <head>
   <title>Example Test Page</title>
   <meta name="description" content="test page description">
+  <meta property="og:title" content="OG Welcome Title">
+  <link rel="canonical" href="/canonical/example-test-page">
+  <script type="application/ld+json">{"@type":"Article","headline":"Example Test Page"}</script>
   <style>.hidden { display:none; }</style>
   <script>console.log("ignore");</script>
 </head>
@@ -297,6 +303,60 @@ class NetworkingTests(unittest.TestCase):
         self.assertIn("Nested article text block.", result["text"])
         self.assertNotIn("console.log", result["text"])
 
+    def test_fetch_webpage_text_decodes_gzip_response(self) -> None:
+        compressed = gzip.compress(HTML_SAMPLE.encode("utf-8"))
+        with _local_http_site(
+            {
+                "gzip.html": (
+                    200,
+                    {
+                        "Content-Type": "text/html; charset=utf-8",
+                        "Content-Encoding": "gzip",
+                    },
+                    compressed,
+                )
+            }
+        ) as base_url:
+            result = fetch_webpage_text(url=f"{base_url}/gzip.html", max_text_chars=5000)
+        self.assertTrue(result["ok"])
+        self.assertIn("Welcome Title", result["text"])
+
+    def test_extract_webpage_metadata_returns_title_meta_and_json_ld(self) -> None:
+        with _local_http_site({"index.html": HTML_SAMPLE}) as base_url:
+            result = extract_webpage_metadata(url=f"{base_url}/index.html")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["title"], "Example Test Page")
+        self.assertEqual(result["meta_name"]["description"], "test page description")
+        self.assertEqual(result["meta_property"]["og:title"], "OG Welcome Title")
+        self.assertTrue(result["canonical_url"].endswith("/canonical/example-test-page"))
+        self.assertIn('"@type":"Article"', result["json_ld"][0])
+
+    def test_crawl_webpages_follows_relevant_same_domain_links(self) -> None:
+        routes = {
+            "docs/index.html": """<html><body>
+                <h1>Docs Home</h1>
+                <a href="/docs/getting-started.html">Getting Started</a>
+                <a href="/docs/api.html">API Reference</a>
+                <a href="/login">Login</a>
+            </body></html>""",
+            "docs/getting-started.html": "<html><body><h1>Getting Started</h1><p>Install steps here.</p></body></html>",
+            "docs/api.html": "<html><body><h1>API Reference</h1><p>Endpoint list.</p></body></html>",
+            "login": "<html><body><h1>Login</h1></body></html>",
+        }
+        with _local_http_site(routes) as base_url:
+            result = crawl_webpages(
+                start_url=f"{base_url}/docs/index.html",
+                max_pages=3,
+                max_depth=1,
+                exclude_patterns=["login"],
+            )
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["page_count"], 3)
+        titles = [item.get("title", "") for item in result["pages"] if item.get("ok")]
+        self.assertIn("Docs Home", titles)
+        self.assertIn("Getting Started", titles)
+        self.assertIn("API Reference", titles)
+
     def test_webpage_to_markdown_converts_basic_structure(self) -> None:
         with _local_http_site({"index.html": HTML_SAMPLE}) as base_url:
             result = webpage_to_markdown(url=f"{base_url}/index.html", max_markdown_chars=5000)
@@ -495,7 +555,8 @@ class NetworkingTests(unittest.TestCase):
             server_thread.join(timeout=1)
 
 
-RouteValue = str | tuple[int, dict[str, str], str] | Callable[[http.server.BaseHTTPRequestHandler], tuple[int, dict[str, str], str]]
+RouteBody = str | bytes
+RouteValue = RouteBody | tuple[int, dict[str, str], RouteBody] | Callable[[http.server.BaseHTTPRequestHandler], tuple[int, dict[str, str], RouteBody]]
 
 
 class _SiteContext:
@@ -509,7 +570,7 @@ class _SiteContext:
         routes = {f"/{key.lstrip('/')}": value for key, value in self.routes.items()}
 
         class InMemoryHandler(http.server.BaseHTTPRequestHandler):
-            def _resolve_route(self) -> tuple[int, dict[str, str], str]:
+            def _resolve_route(self) -> tuple[int, dict[str, str], RouteBody]:
                 path = urlparse(self.path).path
                 route = routes.get(path)
                 if route is None:
@@ -527,7 +588,7 @@ class _SiteContext:
 
             def _send_route(self, *, include_body: bool) -> None:
                 status, headers, body = self._resolve_route()
-                payload = body.encode("utf-8")
+                payload = body.encode("utf-8") if isinstance(body, str) else body
                 self.send_response(status)
                 for key, value in headers.items():
                     self.send_header(key, value)

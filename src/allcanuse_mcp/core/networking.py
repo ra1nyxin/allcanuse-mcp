@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import gzip
 import hashlib
 import ipaddress
 import json
@@ -14,6 +15,8 @@ import ssl
 import struct
 import subprocess
 import tempfile
+import zlib
+from collections import deque
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -47,6 +50,12 @@ def _build_default_user_agent() -> str:
 DEFAULT_HTTP_USER_AGENT = _build_default_user_agent()
 _DEFAULT_HTTP_HEADERS = {
     "User-Agent": DEFAULT_HTTP_USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 
@@ -112,8 +121,9 @@ def _fetch_url(
     with urlopen(request, timeout=max(timeout_ms, 1) / 1000) as response:
         raw = response.read()
         content_type = response.headers.get("Content-Type", "")
-        charset = response.headers.get_content_charset() or "utf-8"
-        text = raw.decode(charset, errors="replace")
+        decoded_raw = _decode_http_body(raw, content_encoding=response.headers.get("Content-Encoding", ""))
+        charset = _resolve_response_charset(content_type=content_type, body=decoded_raw)
+        text = decoded_raw.decode(charset, errors="replace")
         return {
             "status": response.status,
             "reason": response.reason,
@@ -121,8 +131,9 @@ def _fetch_url(
             "headers": dict(response.headers.items()),
             "content_type": content_type,
             "charset": charset,
-            "body_bytes": len(raw),
-            "raw": raw,
+            "body_bytes": len(decoded_raw),
+            "raw": decoded_raw,
+            "raw_wire_bytes": len(raw),
             "text": text,
         }
 
@@ -151,6 +162,85 @@ def _truncate_text(text: str, max_chars: int) -> tuple[str, bool]:
     if max_chars > 0 and len(text) > max_chars:
         return text[:max_chars], True
     return text, False
+
+
+def _decode_http_body(raw: bytes, *, content_encoding: str) -> bytes:
+    encoding = (content_encoding or "").strip().lower()
+    if not encoding:
+        return raw
+    if encoding == "gzip":
+        return gzip.decompress(raw)
+    if encoding == "deflate":
+        try:
+            return zlib.decompress(raw)
+        except zlib.error:
+            return zlib.decompress(raw, -zlib.MAX_WBITS)
+    return raw
+
+
+def _resolve_response_charset(*, content_type: str, body: bytes) -> str:
+    match = re.search(r"charset=([A-Za-z0-9._-]+)", content_type or "", flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    head = body[:4096].decode("ascii", errors="ignore")
+    meta_match = re.search(r"<meta[^>]+charset=['\"]?\s*([A-Za-z0-9._-]+)", head, flags=re.IGNORECASE)
+    if meta_match:
+        return meta_match.group(1)
+    meta_http_equiv = re.search(
+        r"<meta[^>]+content=['\"][^'\"]*charset=([A-Za-z0-9._-]+)",
+        head,
+        flags=re.IGNORECASE,
+    )
+    if meta_http_equiv:
+        return meta_http_equiv.group(1)
+    return "utf-8"
+
+
+def _normalize_crawl_url(base_url: str, href: str) -> str:
+    absolute_url = urljoin(base_url, href or "").strip()
+    if not absolute_url:
+        return ""
+    parsed = urlparse(absolute_url)
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    normalized = parsed._replace(fragment="")
+    return urlunparse(normalized)
+
+
+def _url_allowed_for_crawl(
+    url: str,
+    *,
+    start_host: str,
+    same_domain_only: bool,
+    include_patterns: list[str] | None,
+    exclude_patterns: list[str] | None,
+) -> bool:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    if same_domain_only and parsed.netloc and parsed.netloc != start_host:
+        return False
+    lowered = url.casefold()
+    if exclude_patterns and any(pattern.casefold() in lowered for pattern in exclude_patterns):
+        return False
+    if include_patterns and not any(pattern.casefold() in lowered for pattern in include_patterns):
+        return False
+    return True
+
+
+def _score_crawl_link(link: dict[str, Any]) -> int:
+    text = (link.get("text") or "").casefold()
+    absolute_url = (link.get("absolute_url") or "").casefold()
+    score = 0
+    for needle in ("doc", "guide", "manual", "reference", "api", "faq", "help", "start", "install", "tutorial"):
+        if needle in text or needle in absolute_url:
+            score += 3
+    for needle in ("login", "signup", "register", "account", "privacy", "terms", "javascript:"):
+        if needle in text or needle in absolute_url:
+            score -= 5
+    if text:
+        score += 1
+    return score
 
 
 def _encode_payload(data: str, *, input_encoding: str) -> bytes:
@@ -415,6 +505,8 @@ class _HTMLTextExtractor(HTMLParser):
         self._pieces: list[str] = []
         self.title_parts: list[str] = []
         self._in_title = False
+        self.h1_parts: list[str] = []
+        self._in_h1 = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered = tag.lower()
@@ -423,6 +515,8 @@ class _HTMLTextExtractor(HTMLParser):
             return
         if lowered == "title":
             self._in_title = True
+        if lowered == "h1":
+            self._in_h1 = True
         if lowered in {"p", "div", "section", "article", "main", "aside", "header", "footer", "br", "li"}:
             self._pieces.append("\n")
 
@@ -433,6 +527,8 @@ class _HTMLTextExtractor(HTMLParser):
             return
         if lowered == "title":
             self._in_title = False
+        if lowered == "h1":
+            self._in_h1 = False
         if lowered in {"p", "div", "section", "article", "main", "aside", "header", "footer", "li"}:
             self._pieces.append("\n")
 
@@ -441,6 +537,8 @@ class _HTMLTextExtractor(HTMLParser):
             return
         if self._in_title:
             self.title_parts.append(data)
+        if self._in_h1:
+            self.h1_parts.append(data)
         cleaned = " ".join(data.split())
         if cleaned:
             self._pieces.append(cleaned)
@@ -454,7 +552,10 @@ class _HTMLTextExtractor(HTMLParser):
         return joined.strip()
 
     def get_title(self) -> str:
-        return " ".join(" ".join(self.title_parts).split()).strip()
+        title = " ".join(" ".join(self.title_parts).split()).strip()
+        if title:
+            return title
+        return " ".join(" ".join(self.h1_parts).split()).strip()
 
 
 class _LinkExtractor(HTMLParser):
@@ -747,6 +848,67 @@ class _MarkdownExtractor(HTMLParser):
         return text.strip()
 
 
+class _MetadataExtractor(HTMLParser):
+    def __init__(self, *, base_url: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.base_url = base_url
+        self._in_title = False
+        self.title_parts: list[str] = []
+        self.meta_tags: list[dict[str, str]] = []
+        self.links: list[dict[str, str]] = []
+        self.json_ld_blocks: list[str] = []
+        self._capture_json_ld = False
+        self._json_ld_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        lowered = tag.lower()
+        attr_map = {key.lower(): value or "" for key, value in attrs}
+        if lowered == "title":
+            self._in_title = True
+            return
+        if lowered == "meta":
+            self.meta_tags.append(attr_map)
+            return
+        if lowered == "link":
+            rel = attr_map.get("rel", "").strip()
+            href = attr_map.get("href", "").strip()
+            self.links.append(
+                {
+                    "rel": rel,
+                    "href": href,
+                    "absolute_href": urljoin(self.base_url, href) if href else "",
+                    "type": attr_map.get("type", ""),
+                }
+            )
+            return
+        if lowered == "script":
+            script_type = attr_map.get("type", "").casefold()
+            if script_type == "application/ld+json":
+                self._capture_json_ld = True
+                self._json_ld_parts = []
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered == "title":
+            self._in_title = False
+            return
+        if lowered == "script" and self._capture_json_ld:
+            payload = "".join(self._json_ld_parts).strip()
+            if payload:
+                self.json_ld_blocks.append(payload)
+            self._capture_json_ld = False
+            self._json_ld_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._in_title:
+            self.title_parts.append(data)
+        if self._capture_json_ld:
+            self._json_ld_parts.append(data)
+
+    def get_title(self) -> str:
+        return " ".join(" ".join(self.title_parts).split()).strip()
+
+
 def _normalize_rr_name(name: str, fallback: str) -> str:
     return name.rstrip(".") or fallback
 
@@ -991,7 +1153,10 @@ def http_request(
             result["saved_to"] = str(target)
         return result
     except HTTPError as exc:
-        payload = exc.read().decode("utf-8", errors="replace")
+        raw = exc.read()
+        decoded_raw = _decode_http_body(raw, content_encoding=exc.headers.get("Content-Encoding", ""))
+        charset = _resolve_response_charset(content_type=exc.headers.get("Content-Type", ""), body=decoded_raw)
+        payload = decoded_raw.decode(charset, errors="replace")
         return {
             "ok": False,
             "status": exc.code,
@@ -1086,8 +1251,9 @@ def submit_web_form(
         request = Request(url=request_url, method=method_name, data=body, headers=request_headers)
         with urlopen(request, timeout=max(timeout_ms, 1) / 1000) as response:
             raw = response.read()
-            charset = response.headers.get_content_charset() or "utf-8"
-            text = raw.decode(charset, errors="replace")
+            decoded_raw = _decode_http_body(raw, content_encoding=response.headers.get("Content-Encoding", ""))
+            charset = _resolve_response_charset(content_type=response.headers.get("Content-Type", ""), body=decoded_raw)
+            text = decoded_raw.decode(charset, errors="replace")
             body_text, truncated = _truncate_text(text, max_body_chars)
             result: dict[str, Any] = {
                 "ok": True,
@@ -1103,16 +1269,19 @@ def submit_web_form(
                 "content_type": response.headers.get("Content-Type", ""),
                 "body": body_text,
                 "body_truncated": truncated,
-                "body_bytes": len(raw),
+                "body_bytes": len(decoded_raw),
             }
             if save_to:
                 target = Path(save_to).expanduser().resolve()
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(raw)
+                target.write_bytes(decoded_raw)
                 result["saved_to"] = str(target)
             return result
     except HTTPError as exc:
-        payload = exc.read().decode("utf-8", errors="replace")
+        raw = exc.read()
+        decoded_raw = _decode_http_body(raw, content_encoding=exc.headers.get("Content-Encoding", ""))
+        charset = _resolve_response_charset(content_type=exc.headers.get("Content-Type", ""), body=decoded_raw)
+        payload = decoded_raw.decode(charset, errors="replace")
         return {
             "ok": False,
             "url": url,
@@ -1187,8 +1356,9 @@ def upload_file(
         request = Request(url=url, method=method_name, data=body, headers=request_headers)
         with urlopen(request, timeout=max(timeout_ms, 1) / 1000) as response:
             raw = response.read()
-            charset = response.headers.get_content_charset() or "utf-8"
-            text = raw.decode(charset, errors="replace")
+            decoded_raw = _decode_http_body(raw, content_encoding=response.headers.get("Content-Encoding", ""))
+            charset = _resolve_response_charset(content_type=response.headers.get("Content-Type", ""), body=decoded_raw)
+            text = decoded_raw.decode(charset, errors="replace")
             body_text, truncated = _truncate_text(text, max_body_chars)
             result: dict[str, Any] = {
                 "ok": True,
@@ -1208,18 +1378,21 @@ def upload_file(
                 "headers": dict(response.headers.items()),
                 "response_body": body_text,
                 "response_body_truncated": truncated,
-                "response_body_bytes": len(raw),
+                "response_body_bytes": len(decoded_raw),
             }
             if form_fields:
                 result["form_fields"] = {str(key): "" if value is None else str(value) for key, value in form_fields.items()}
             if save_to:
                 target = Path(save_to).expanduser().resolve()
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(raw)
+                target.write_bytes(decoded_raw)
                 result["saved_to"] = str(target)
             return result
     except HTTPError as exc:
-        payload = exc.read().decode("utf-8", errors="replace")
+        raw = exc.read()
+        decoded_raw = _decode_http_body(raw, content_encoding=exc.headers.get("Content-Encoding", ""))
+        charset = _resolve_response_charset(content_type=exc.headers.get("Content-Type", ""), body=decoded_raw)
+        payload = decoded_raw.decode(charset, errors="replace")
         result = {
             "ok": False,
             "url": url,
@@ -1584,6 +1757,62 @@ def fetch_webpage_text(
         return {"ok": False, "url": url, "error": str(exc.reason)}
 
 
+def extract_webpage_metadata(
+    *,
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout_ms: int = 20_000,
+    include_json_ld: bool = True,
+) -> dict[str, Any]:
+    try:
+        fetched = _fetch_url(url=url, headers=headers, timeout_ms=timeout_ms)
+        parser = _MetadataExtractor(base_url=fetched["final_url"])
+        parser.feed(fetched["text"])
+        parser.close()
+
+        meta_by_name: dict[str, str] = {}
+        meta_by_property: dict[str, str] = {}
+        canonical_url = ""
+        alternate_links: list[dict[str, str]] = []
+        for meta in parser.meta_tags:
+            content = meta.get("content", "")
+            name = meta.get("name", "").strip()
+            prop = meta.get("property", "").strip()
+            http_equiv = meta.get("http-equiv", "").strip()
+            if name:
+                meta_by_name[name] = content
+            if prop:
+                meta_by_property[prop] = content
+            if http_equiv:
+                meta_by_name[f"http-equiv:{http_equiv}"] = content
+        for link in parser.links:
+            rel = link.get("rel", "").casefold()
+            if "canonical" in rel and link.get("absolute_href"):
+                canonical_url = link["absolute_href"]
+            if rel:
+                alternate_links.append(link)
+
+        result: dict[str, Any] = {
+            "ok": True,
+            "url": url,
+            "final_url": fetched["final_url"],
+            "status": fetched["status"],
+            "content_type": fetched["content_type"],
+            "title": parser.get_title(),
+            "canonical_url": canonical_url,
+            "meta_name": meta_by_name,
+            "meta_property": meta_by_property,
+            "links": alternate_links,
+        }
+        if include_json_ld:
+            result["json_ld"] = parser.json_ld_blocks
+        return result
+    except HTTPError as exc:
+        return {"ok": False, "url": url, "status": exc.code, "reason": exc.reason}
+    except URLError as exc:
+        return {"ok": False, "url": url, "error": str(exc.reason)}
+
+
 def extract_links_from_webpage(
     *,
     url: str,
@@ -1633,6 +1862,122 @@ def extract_links_from_webpage(
         }
     except URLError as exc:
         return {"ok": False, "url": url, "error": str(exc.reason)}
+
+
+def crawl_webpages(
+    *,
+    start_url: str,
+    headers: dict[str, str] | None = None,
+    timeout_ms: int = 20_000,
+    max_pages: int = 10,
+    max_depth: int = 2,
+    same_domain_only: bool = True,
+    include_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
+    max_text_chars_per_page: int = 8000,
+    max_links_per_page: int = 40,
+) -> dict[str, Any]:
+    parsed_start = urlparse(start_url)
+    if parsed_start.scheme not in {"http", "https"} or not parsed_start.netloc:
+        raise ValueError("start_url must be a valid http or https URL")
+    start_host = parsed_start.netloc
+    queue: deque[tuple[str, int, str]] = deque([(start_url, 0, "")])
+    visited: set[str] = set()
+    pages: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    while queue and len(pages) < max_pages:
+        current_url, depth, discovered_from = queue.popleft()
+        normalized_url = _normalize_crawl_url(current_url, "")
+        if not normalized_url or normalized_url in visited:
+            continue
+        visited.add(normalized_url)
+
+        if not _url_allowed_for_crawl(
+            normalized_url,
+            start_host=start_host,
+            same_domain_only=same_domain_only,
+            include_patterns=include_patterns,
+            exclude_patterns=exclude_patterns,
+        ):
+            skipped.append({"url": normalized_url, "reason": "filtered"})
+            continue
+
+        page = fetch_webpage_text(
+            url=normalized_url,
+            headers=headers,
+            timeout_ms=timeout_ms,
+            max_text_chars=max_text_chars_per_page,
+            include_title=True,
+        )
+        if not page.get("ok"):
+            pages.append(
+                {
+                    "url": normalized_url,
+                    "depth": depth,
+                    "discovered_from": discovered_from,
+                    "ok": False,
+                    "error": page.get("error", ""),
+                    "status": page.get("status"),
+                    "reason": page.get("reason", ""),
+                }
+            )
+            continue
+
+        links_result = extract_links_from_webpage(
+            url=normalized_url,
+            headers=headers,
+            timeout_ms=timeout_ms,
+            max_links=max_links_per_page,
+        )
+        links = links_result.get("links", []) if links_result.get("ok") else []
+        sorted_links = sorted(links, key=_score_crawl_link, reverse=True)
+
+        pages.append(
+            {
+                "url": normalized_url,
+                "final_url": page["final_url"],
+                "depth": depth,
+                "discovered_from": discovered_from,
+                "ok": True,
+                "title": page.get("title", ""),
+                "text": page.get("text", ""),
+                "text_truncated": page.get("text_truncated", False),
+                "status": page.get("status"),
+                "reason": page.get("reason", ""),
+                "content_type": page.get("content_type", ""),
+                "link_count": len(links),
+                "top_links": sorted_links[: min(10, len(sorted_links))],
+            }
+        )
+
+        if depth >= max_depth:
+            continue
+        for link in sorted_links:
+            next_url = _normalize_crawl_url(normalized_url, link.get("absolute_url") or link.get("href") or "")
+            if not next_url or next_url in visited:
+                continue
+            if not _url_allowed_for_crawl(
+                next_url,
+                start_host=start_host,
+                same_domain_only=same_domain_only,
+                include_patterns=include_patterns,
+                exclude_patterns=exclude_patterns,
+            ):
+                continue
+            queue.append((next_url, depth + 1, normalized_url))
+
+    return {
+        "ok": True,
+        "start_url": start_url,
+        "visited_count": len(visited),
+        "page_count": len(pages),
+        "pages": pages,
+        "skipped": skipped,
+        "same_domain_only": same_domain_only,
+        "max_depth": max_depth,
+        "max_pages": max_pages,
+    }
 
 
 def extract_webpage_elements(

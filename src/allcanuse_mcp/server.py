@@ -106,8 +106,10 @@ def _tool_category(tool_name: str) -> str:
             "fetch_webpage_text",
             "webpage_to_markdown",
             "extract_links_from_webpage",
+            "extract_webpage_metadata",
             "extract_tables_from_webpage",
             "extract_webpage_elements",
+            "crawl_webpages",
             "trace_http_redirects",
             "websocket_connect",
             "trace_route",
@@ -277,12 +279,13 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "你可以使用当前 MCP Server 暴露的工具完成这项任务。"
                     "这些工具就是你的手、眼睛和操作能力；需要观察、读取、判断、修改、验证时，直接用工具。"
                     "不要无谓回避工具，也不要只给口头建议而不动手。"
-                    "优先按“观察 -> 判断 -> 执行 -> 验证”的顺序推进。"
-                    "能用多个相关工具组合完成时，就合理组合，例如："
-                    "代码任务先看目录和文件，再修改，再跑命令验证；"
-                    "网页任务先读正文，再提取链接或元素；"
-                    "网络任务先看配置，再测 DNS、ping、TCP、HTTP。"
+                "优先按“观察 -> 判断 -> 执行 -> 验证”的顺序推进。"
+                "能用多个相关工具组合完成时，就合理组合，例如："
+                "代码任务先看目录和文件，再修改，再跑命令验证；"
+                    "网页任务先读正文，再提取链接或元素；如果当前页像目录页、导航页、列表页、文档首页或索引页，就继续进入其中最相关的站内链接，不要只停一页；需要批量递进时直接用 `crawl_webpages`；"
+                "网络任务先看配置，再测 DNS、ping、TCP、HTTP。"
                     "如果任务涉及较长等待、用户离线、稍后回来、今晚值班、断线后继续接手，优先切到值班模式：短等用 `wait`，明确条件用 `wait_for_*`，长期托管用 `create_background_task`，交接用 `get_task_handoff`。"
+                    "如果用户一句话要求你自己做一小时左右的事情，默认先创建后台任务，再补任务计划、事件和产物记录，不要同步空等一小时。"
                     "优先使用结构化工具，而不是把所有事情都交给 shell。"
                     "如果当前任务依赖缺失，并且工具或命令已经明确提示缺少什么，"
                     "你可以先安装最小必需依赖后继续。"
@@ -306,10 +309,11 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "优先按“观察 -> 判断 -> 执行 -> 验证”的顺序工作。"
                     "不要无谓回避工具；如果某一步需要事实、状态、文件内容、网页内容、窗口状态或网络结果，就直接调用工具获取。"
                     "如果任务涉及代码，先找文件并读取，再修改，再执行验证命令。"
-                    "如果任务涉及网页，先读正文，再找链接或抓元素。"
+                    "如果任务涉及网页，先读正文，再找链接或抓元素；如果当前页明显只是目录页、导航页、列表页、文档首页、索引页或搜索结果页，就沿最相关的站内链接继续深入，不要只读一页；需要批量推进时优先 `crawl_webpages`。"
                     "如果任务涉及网络，先看配置，再测 DNS、ping、TCP、HTTP。"
                     "如果任务涉及桌面，先看桌面上下文，再看活动窗口或截图。"
                     "如果任务涉及较长等待、用户离线、稍后回来、需要跨会话继续，主动考虑值班工具：短等用 `wait`，明确条件用 `wait_for_*`，长期托管用 `create_background_task`，恢复交接用 `get_task_handoff`。"
+                    "如果用户说的是“自己做一个小时”“帮我盯一小时”“到点再汇报”，直接按后台值班流程处理：先 `create_background_task`，再 `create_task_plan`，再 `append_task_event`，有产物就 `record_task_artifact`，到点后 `summarize_background_task` 或 `get_task_handoff`。"
                     "如果工具已经足够，不要额外安装同类依赖；只有在工具明确提示缺依赖且当前任务确实需要时，才安装最小必需依赖。"
                     f"当前任务：{task}"
                 ),
@@ -329,14 +333,17 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                 "content": (
                     "你正在处理一个可能需要值班、等待、托管或交接的任务。"
                     "值班工具不是装饰，而是你在用户离线、会话中断、等待时间较长时继续推进任务的主要手段。"
+                    "如果用户要求你在接下来一小时内自己做事、自己盯、自己等，优先把任务建立成后台任务，并把计划、事件、产物、交接摘要一次写齐。"
                     "先判断场景：如果只是几秒到几十秒的短等待，并且你会在当前回复里继续处理，优先用 `wait` 或 `wait_until`；"
                     "如果等待对象很明确，优先用 `wait_for_file`、`wait_for_process`、`wait_for_port`、`wait_for_http`、`wait_for_window`、`wait_for_desktop_change`；"
                     "如果用户会离开、睡觉、稍后回来，或者任务可能跨会话持续较久，优先立刻用 `create_background_task` 托管，不要只停在口头等待。"
                     "后台任务创建后，尽早补 `create_task_plan`、`append_task_event`、`record_task_artifact`，让后续接手时能看懂。"
+                    "如果任务提前完成，不要继续空等到原定时间；先补总结和交接，然后根据需要继续下一个相关动作。"
                     "如果当前必须等用户决定，优先用 `mark_task_waiting_for_user` 把问题写清楚；如果只是等外部条件成熟，可用 `mark_task_waiting_for_condition` 或直接继续轮询。"
                     "重新接手旧任务、断线恢复、跨模型交接时，优先用 `get_task_handoff`，必要时再读 `get_background_task` 或 `summarize_background_task`。"
                     "典型场景：盯服务恢复用 `wait_http` 或后台 `wait_http`；盯安装器或弹窗用 `wait_window` 或 `wait_desktop_change`；盯构建产物用 `wait_file`。"
                     "不要因为用户暂时不在线就停在原地，只要能条件化，就应托管给值班工具继续推进。"
+                    "一个可执行模板：先建后台任务，再创建 3 到 6 个步骤计划，再记录首条事件，再登记产物，再在到点前后用 `get_scheduler_time`、`get_background_task`、`summarize_background_task`、`get_task_handoff` 做收口。"
                     f"{situation_hint}"
                     f"当前任务：{task}"
                 ),
@@ -356,11 +363,19 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                 "content": (
                     "你正在执行网页阅读或网页资料抓取任务。"
                     "工具就是你的浏览与抓取能力，应主动使用。"
-                    "推荐顺序：先用 `fetch_webpage_text` 读取正文；"
-                    "再用 `extract_links_from_webpage` 找文档入口、下载链接、跳转链接；"
+                    "推荐顺序：先用 `trace_http_redirects`、`fetch_webpage_text` 或 `webpage_to_markdown` 读取当前页；"
+                    "需要先判断页面性质时，用 `extract_webpage_metadata` 看标题、canonical、meta 和 JSON-LD；"
+                    "再用 `extract_links_from_webpage` 找文档入口、章节链接、详情页、下载链接、上一篇/下一篇、跳转链接；"
+                    "如果当前页明显只是目录页、导航页、列表页、索引页、搜索结果页或文档首页，不要停在这一页，而要继续进入其中最相关的站内链接。"
+                    "如果需要一口气沿站内继续抓多页，优先用 `crawl_webpages`，而不是手工重复一页页调用。"
+                    "阅读网页时不要只看目录项标题或链接文字，应该继续点进真正有正文的内容页。"
+                    "示例一：如果用户让你读一个文档首页，先 `trace_http_redirects`，再 `extract_webpage_metadata`，再 `fetch_webpage_text`，如果发现它只是目录页，就 `extract_links_from_webpage` 或 `crawl_webpages` 继续抓章节页。"
+                    "示例二：如果用户让你找下载附件，先 `fetch_webpage_text` 判断页面作用，再 `extract_links_from_webpage(href_filter='.pdf' 或 '.zip')` 找附件入口，必要时再 `download_file`。"
+                    "示例三：如果用户让你收集某个帮助中心内容，不要只读首页摘要，应继续沿 FAQ、guide、manual、install、reference 这类链接深入。"
                     "需要精确抓取标题、描述、文章区块、特定链接时，再用 `extract_webpage_elements`。"
                     "如果需要保存文件，再用 `download_file`。"
                     "网络较慢或页面较大时，主动调大 `timeout_ms` 或 `max_text_chars`。"
+                    "如果任务目标还没满足，就继续沿相关链接探索更多页面，而不是过早停止。"
                     "不要只凭 URL 猜内容，先读网页再下结论。"
                     f"{url_hint}"
                     f"当前任务：{task}"
