@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Issue
+    url: https://github.com/ra1nyxin/allcanuse-mcp/security/advisories
+    about: 如果是安全问题，请优先走私密漏洞报告渠道，不要先公开贴完整利用细节。

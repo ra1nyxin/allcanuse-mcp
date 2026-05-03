@@ -1,0 +1,58 @@
+name: Feature Request
+description: 提议新增工具、增强现有能力、完善提示词或改进文档
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提功能建议时，优先说明：
+        - 真实使用场景
+        - 为什么现有工具不够
+        - 是否有跨平台要求
+        - 是否会引入额外依赖
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 需求背景
+      description: 先说明想解决什么问题，而不只是想加什么工具
+      placeholder: 例如：文档站首页能读到，但模型仍要手工逐页点进去，批量递进探索成本较高
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述希望增加或改进什么
+      placeholder: 例如：新增 `crawl_webpages`，支持同域递进抓取、深度限制、include/exclude 规则
+    validations:
+      required: true
+
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 期望行为
+      description: 说明理想情况下模型或工具应该怎么工作
+      placeholder: 例如：模型调用一次后，就能拿到多页正文摘要、深度、来源链接，而不是自己循环十几次
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: 兼容性与依赖考虑
+      description: 如果有的话，请写 Windows / Linux、第三方依赖、返回结构兼容性要求
+      placeholder: |
+        - 是否要求 Windows / Linux 通用
+        - 是否能接受新增依赖
+        - 是否影响已有工具返回结构
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 其他补充
+      description: 可以附参考实现、相关文档、已有 issue、截图等
+
