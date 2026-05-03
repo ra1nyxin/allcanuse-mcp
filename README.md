@@ -130,7 +130,7 @@ tool_timeout_sec = 180
 
 #### OpenCode
 
-OpenCode 通常写在 `opencode.json` 或 `opencode.jsonc` 的 `mcp` 字段里：
+OpenCode 通常写在用户目录的 .config/opencode 目录的 `opencode.json` 或 `opencode.jsonc` 的 `mcp` 字段里：
 
 ```json
 {
@@ -138,7 +138,7 @@ OpenCode 通常写在 `opencode.json` 或 `opencode.jsonc` 的 `mcp` 字段里�
   "mcp": {
     "allcanuse": {
       "type": "local",
-      "command": ["python", "run_server.py", "--transport", "stdio"],
+      "command": ["python", "D:/*****/allcanuse/run_server.py", "--transport", "stdio"],
       "enabled": true
     }
   }
