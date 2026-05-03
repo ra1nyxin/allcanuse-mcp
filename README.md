@@ -27,7 +27,11 @@
 
 - 帮你排查“某个服务为什么起不来”：先看端口、再看进程、再看日志、再发 HTTP 请求、最后给出定位结果
 - 帮你改代码和修配置：先搜索目标文件和函数，再分段读取大文件，精确修改几行代码，然后自动跑验证命令
-- 帮你阅读网页和整理资料：不只抓当前页正文，还能继续提取站内链接、章节页、详情页、表格和附件，递进式收集整个网站里与任务相关的内容
+- 帮你阅读网页和整理资料：不只抓当前页正文，还能继续提取站内链接、章节页、详情页、表格、结构化元数据和附件，递进式收集整个网站里与任务相关的内容
+- 帮你做更接近“研究助手”式的网页探索：模型会先判断当前页是正文页、目录页、索引页还是文档首页，再决定继续抓正文、提链接、读 metadata、还是批量递进抓多个子页，而不是把一组固定 URL 机械跑完就结束
+- 帮你把网站内容按任务目标动态展开：例如先读文档首页，再沿安装页、API 页、FAQ 页、下载页继续深入；或者先读文章页，再顺着相关详情页和附件链接继续补全上下文
+- 帮你在抓取过程中边读边判断：模型可以根据当前抓到的标题、正文、canonical、Open Graph、JSON-LD、链接文字和页面结构，决定下一步该继续读哪一页、跳过哪一页、下载哪个附件、提取哪个表格或元素
+- 帮你把网页抓取和本地工作流连起来：抓到内容后不只是返回原始文本，还可以继续下载文件、保存结果、整理为 Markdown、提取表格、再结合本地代码、日志、网络状态一起分析
 - 帮你检查本地网络问题：看 DNS、ping、端口、TLS、路由和连接状态，判断是解析问题、主机不可达、端口不通还是应用层异常
 - 帮你自动观察桌面变化：盯安装器、盯窗口弹出、盯前台切换、自动截图，适合实验环境里的 GUI 任务
 - 帮你上传和下载本地文件：把日志、压缩包、构建产物上传到接口，也可以像轻量版 `wget` 一样把网络文件拉到本地
@@ -82,7 +86,7 @@ startup_timeout_ms = 30000
 tool_timeout_sec = 180
 ```
 
-如果你已经执行过 `pip install -e .`，也可以改成：
+如果已经执行过 `pip install -e .`，也可以改成：
 
 ```toml
 [mcp_servers.allcanuse]
@@ -185,6 +189,177 @@ OpenCode 通常写在 `opencode.json` 或 `opencode.jsonc` 的 `mcp` 字段里�
 }
 ```
 
+### 2.1 更多客户端配置格式参考
+
+下面这些格式参考了相关权威客户端接入文档中的常见配置结构，再按当前项目的本地 `stdio` 启动方式改写成 `allcanuse-mcp` 可直接使用的示例。
+
+#### GitHub Copilot CLI
+
+GitHub Copilot CLI 的 MCP 配置文件通常是：
+
+```text
+~/.copilot/mcp-config.json
+```
+
+如果已经执行过 `pip install -e .`，推荐直接写成：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "allcanuse-mcp"
+    }
+  }
+}
+```
+
+如果更希望从仓库目录直接运行，也可以写：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"],
+      "cwd": "D:/path/to/allcanuse"
+    }
+  }
+}
+```
+
+#### GitHub Copilot IDEs
+
+GitHub Copilot IDE 文档中的常见结构是项目级或用户级 `.mcp.json`，并使用 `servers` 字段。
+
+如果已经安装成命令行入口，推荐这样写：
+
+```json
+{
+  "servers": {
+    "allcanuse": {
+      "type": "stdio",
+      "command": "allcanuse-mcp"
+    }
+  }
+}
+```
+
+如果你的具体 IDE 版本支持本地命令加参数，也可以改成：
+
+```json
+{
+  "servers": {
+    "allcanuse": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"]
+    }
+  }
+}
+```
+
+#### Cursor
+
+Cursor 文档里常见全局 MCP 配置文件是：
+
+```text
+~/.cursor/mcp.json
+```
+
+推荐示例：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"],
+      "cwd": "D:/path/to/allcanuse"
+    }
+  }
+}
+```
+
+如果已经安装为命令行入口，也可以：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "allcanuse-mcp"
+    }
+  }
+}
+```
+
+#### Windsurf
+
+Windsurf 文档里常见 MCP 配置文件是：
+
+```text
+~/.codeium/windsurf/mcp_config.json
+```
+
+推荐示例：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"],
+      "cwd": "D:/path/to/allcanuse"
+    }
+  }
+}
+```
+
+如果已经安装为命令行入口，也可以：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "allcanuse-mcp"
+    }
+  }
+}
+```
+
+#### Rovo Dev CLI
+
+Rovo Dev CLI 文档中的常见做法是先运行：
+
+```text
+acli rovodev mcp
+```
+
+打开对应 MCP 配置后，可按同样的 `mcpServers` 结构写入本项目。推荐示例：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"],
+      "cwd": "D:/path/to/allcanuse"
+    }
+  }
+}
+```
+
+如果已经安装为命令行入口，也可以：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "allcanuse-mcp"
+    }
+  }
+}
+```
+
 ### 3. 重启客户端后直接使用
 
 配置保存后，重启对应客户端即可。
@@ -213,7 +388,7 @@ get_desktop_context()
 - Codex / Claude Code / OpenCode 接入教程：[docs/CLIENT-INTEGRATIONS.zh-CN.md](./docs/CLIENT-INTEGRATIONS.zh-CN.md)
 - 发布后最终用户使用教程：[docs/RELEASE-USAGE.zh-CN.md](./docs/RELEASE-USAGE.zh-CN.md)
 
-如果你要把当前 MCP 接到不同客户端，建议优先看：
+如果要把当前 MCP 接到不同客户端，建议优先看：
 
 - [LM Studio](./docs/LM-STUDIO.zh-CN.md)
 - [全部工具清单](./docs/TOOLS.zh-CN.md)
