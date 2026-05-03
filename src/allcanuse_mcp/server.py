@@ -4,6 +4,8 @@ from mcp.server.fastmcp import FastMCP
 
 from allcanuse_mcp.descriptions import SERVER_INSTRUCTIONS
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
+from allcanuse_mcp.descriptions import build_server_instructions
+from allcanuse_mcp.descriptions import render_runtime_context_text
 from allcanuse_mcp.descriptions import render_guides_index_markdown
 from allcanuse_mcp.descriptions import render_model_playbook_markdown
 from allcanuse_mcp.descriptions import render_overview_markdown
@@ -135,7 +137,7 @@ def _tool_category(tool_name: str) -> str:
 def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     mcp = FastMCP(
         name="allcanuse-mcp",
-        instructions=SERVER_INSTRUCTIONS,
+        instructions=build_server_instructions(),
         host=host,
         port=port,
     )
@@ -272,10 +274,12 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
         description="给中小模型一段更直接的工具使用提示，帮助其在 Windows 或 Linux 实验环境中工作。",
     )
     def workspace_operator(task: str) -> list[dict]:
+        time_hint = render_runtime_context_text()
         return [
             {
                 "role": "user",
                 "content": (
+                    f"当前时间上下文：{time_hint}"
                     "你可以使用当前 MCP Server 暴露的工具完成这项任务。"
                     "这些工具就是你的手、眼睛和操作能力；需要观察、读取、判断、修改、验证时，直接用工具。"
                     "不要无谓回避工具，也不要只给口头建议而不动手。"
@@ -300,10 +304,12 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
         description="要求模型主动组合多个工具推进任务，而不是停留在单步建议上。",
     )
     def multi_tool_executor(task: str) -> list[dict]:
+        time_hint = render_runtime_context_text()
         return [
             {
                 "role": "user",
                 "content": (
+                    f"当前时间上下文：{time_hint}"
                     "你现在应把 MCP 工具当作自己的手和眼睛。"
                     "这个任务默认不是只靠语言分析完成，而是要主动使用多个相关工具推进。"
                     "优先按“观察 -> 判断 -> 执行 -> 验证”的顺序工作。"
@@ -327,10 +333,12 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     )
     def duty_shift_operator(task: str, situation: str = "") -> list[dict]:
         situation_hint = f"当前场景：{situation}。" if situation else ""
+        time_hint = render_runtime_context_text()
         return [
             {
                 "role": "user",
                 "content": (
+                    f"当前时间上下文：{time_hint}"
                     "你正在处理一个可能需要值班、等待、托管或交接的任务。"
                     "值班工具不是装饰，而是你在用户离线、会话中断、等待时间较长时继续推进任务的主要手段。"
                     "如果用户要求你在接下来一小时内自己做事、自己盯、自己等，优先把任务建立成后台任务，并把计划、事件、产物、交接摘要一次写齐。"
@@ -357,10 +365,12 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     )
     def web_research_operator(task: str, url: str = "") -> list[dict]:
         url_hint = f"目标网页：{url}。" if url else ""
+        time_hint = render_runtime_context_text()
         return [
             {
                 "role": "user",
                 "content": (
+                    f"当前时间上下文：{time_hint}"
                     "你正在执行网页阅读或网页资料抓取任务。"
                     "工具就是你的浏览与抓取能力，应主动使用。"
                     "推荐顺序：先用 `trace_http_redirects`、`fetch_webpage_text` 或 `webpage_to_markdown` 读取当前页；"
@@ -390,10 +400,12 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     )
     def code_fix_operator(task: str, root: str = "") -> list[dict]:
         root_hint = f"优先检查目录：{root}。" if root else ""
+        time_hint = render_runtime_context_text()
         return [
             {
                 "role": "user",
                 "content": (
+                    f"当前时间上下文：{time_hint}"
                     "你正在执行代码修复或开发任务。"
                     "工具就是你的读代码、改代码、验证代码的能力，应主动使用。"
                     "推荐顺序：先用 `list_tree`、`find_files`、`search_text`、`read_file` 获取上下文；"
@@ -417,10 +429,12 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     )
     def network_diagnostics_operator(task: str, target: str = "") -> list[dict]:
         target_hint = f"重点目标：{target}。" if target else ""
+        time_hint = render_runtime_context_text()
         return [
             {
                 "role": "user",
                 "content": (
+                    f"当前时间上下文：{time_hint}"
                     "你正在执行网络排查任务。"
                     "工具就是你的观测和诊断能力，应主动分层排查。"
                     "推荐顺序：先用 `get_network_config` 和 `list_network_adapters` 看本机网络状态；"

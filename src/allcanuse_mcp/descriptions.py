@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone as dt_timezone
 from textwrap import dedent
 
 
-SERVER_INSTRUCTIONS = dedent(
+BASE_SERVER_INSTRUCTIONS = dedent(
     """
     你正在操作一台 Windows 或 Linux 实验环境主机，当前 MCP Server 已经暴露了一组可直接调用的系统工具。
 
@@ -60,6 +61,29 @@ SERVER_INSTRUCTIONS = dedent(
     你可以充分使用当前 MCP Server 已暴露的工具来完成任务。工具不是装饰，而是默认工作方式；应主动、合理、连续地使用与当前任务直接相关的工具。
     """
 ).strip()
+
+
+def render_runtime_context_text() -> str:
+    local_now = datetime.now().astimezone()
+    utc_now = datetime.now(dt_timezone.utc)
+    return (
+        f"当前本地时间：{local_now.isoformat()}。"
+        f"当前本地时区：{local_now.tzinfo}。"
+        f"当前 UTC 时间：{utc_now.isoformat()}。"
+        "处理“现在、今天、今晚、明天、一小时后、到点、截止时间、值班轮换”等时间相关任务时，默认以这里的时间上下文为准；"
+        "如果任务跨较长时间跨度，或你怀疑时间已经推进较多，再调用 `get_time` 或 `get_scheduler_time` 复核。"
+    )
+
+
+def build_server_instructions() -> str:
+    return (
+        f"{BASE_SERVER_INSTRUCTIONS}\n\n"
+        "实时时间上下文：\n"
+        f"- {render_runtime_context_text()}"
+    )
+
+
+SERVER_INSTRUCTIONS = build_server_instructions()
 
 
 def _doc(title: str, body: str) -> str:

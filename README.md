@@ -38,36 +38,171 @@
 
 ## 快速开始
 
-直接在仓库根目录运行：
+现在主流 AI 客户端接入 MCP 时，通常只需要：
 
-```powershell
-python run_server.py --transport stdio
-```
+1. 安装依赖
+2. 在客户端配置 MCP
+3. 重启客户端
 
-Windows 也可以：
+不需要你手动先启动这个服务端进程，客户端会按配置自动拉起。
 
-```powershell
-start.cmd --transport stdio
-```
+### 1. 安装依赖
 
-Linux 也可以：
-
-```bash
-./start.sh --transport stdio
-```
-
-如果已经安装为包，也可以：
-
-```powershell
-pip install -e .
-allcanuse-mcp
-```
-
-如果想先一键安装当前项目最基础的运行依赖，也可以：
+先安装当前项目最基础的运行依赖：
 
 ```powershell
 pip install -r requirements.txt
 ```
+
+如果你是开发者，或者希望本地命令更短，也可以：
+
+```powershell
+pip install -e .
+```
+
+### 2. 在客户端里配置 MCP
+
+#### ChatGPT Codex / Codex CLI
+
+配置文件通常是：
+
+```text
+~/.codex/config.toml
+```
+
+示例：
+
+```toml
+[mcp_servers.allcanuse]
+command = "python"
+args = ["run_server.py", "--transport", "stdio"]
+cwd = "D:/path/to/allcanuse"
+enabled = true
+startup_timeout_ms = 30000
+tool_timeout_sec = 180
+```
+
+如果你已经执行过 `pip install -e .`，也可以改成：
+
+```toml
+[mcp_servers.allcanuse]
+command = "allcanuse-mcp"
+enabled = true
+startup_timeout_ms = 30000
+tool_timeout_sec = 180
+```
+
+#### Claude Code
+
+项目内常见做法是在仓库根目录写 `.mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"],
+      "env": {}
+    }
+  }
+}
+```
+
+如果已经安装为命令行入口，也可以：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "type": "stdio",
+      "command": "allcanuse-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+#### OpenCode
+
+OpenCode 通常写在 `opencode.json` 或 `opencode.jsonc` 的 `mcp` 字段里：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "allcanuse": {
+      "type": "local",
+      "command": ["python", "run_server.py", "--transport", "stdio"],
+      "enabled": true
+    }
+  }
+}
+```
+
+如果已经安装为命令行入口，也可以：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "allcanuse": {
+      "type": "local",
+      "command": ["allcanuse-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+#### LM Studio
+
+在 LM Studio 的 `mcp.json` 中可写：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "python",
+      "args": ["run_server.py", "--transport", "stdio"],
+      "cwd": "D:/path/to/allcanuse"
+    }
+  }
+}
+```
+
+如果已经安装为命令行入口，也可以：
+
+```json
+{
+  "mcpServers": {
+    "allcanuse": {
+      "command": "allcanuse-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+### 3. 重启客户端后直接使用
+
+配置保存后，重启对应客户端即可。
+
+接入成功后，建议先让模型调用：
+
+```text
+list_all_tools()
+```
+
+然后再让模型调用：
+
+```text
+get_system_info()
+get_desktop_context()
+```
+
+如果这些调用都正常返回，通常就说明 MCP 已接通并可直接使用。
 
 ## 文档
 
