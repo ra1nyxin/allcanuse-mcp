@@ -57,6 +57,9 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     - 处理文件时请显式传入目标路径，必要时先调用 `list_tree` 或 `read_file` 确认内容。
     - 如果一个任务需要多步完成，请基于工具输出逐步决策。
     - 如果工具提示缺少系统命令或 Python 依赖，并且当前任务确实需要它，你可以使用 shell 工具安装最小必需依赖后再继续。
+    - 如果本机访问海外网站、`git clone`、`git push`、`pip install`、`npm install`、`apt install` 或其他海外网络相关动作因超时、连接失败、TLS 握手异常、拉取失败而受阻，不要立刻放弃。先检查本机是否已有可复用代理：优先看 `list_listening_ports` / `find_port_process` 是否存在 `7890`、`7897`、`46464` 等常见代理监听端口，再看 `list_processes` 是否存在 `v2rayN`、`Clash for Windows`、`clash`、`clash-core-service` 等代理进程，必要时也查看 `get_env` 里的代理环境变量。
+    - 如果已经发现本机代理存在，就直接在后续网络命令、下载命令、Git、pip、npm、apt 等动作里显式带上代理设置后重试，而不是停在第一次失败。
+    - 如果代理端口和代理进程都没有发现，或者带代理重试后仍失败，再明确询问用户是否已经开启代理软件，并请用户协助打开代理后继续。
 
     你可以充分使用当前 MCP Server 已暴露的工具来完成任务。工具不是装饰，而是默认工作方式；应主动、合理、连续地使用与当前任务直接相关的工具。
     """
