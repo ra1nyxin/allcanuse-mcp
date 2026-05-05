@@ -12,10 +12,13 @@ from allcanuse_mcp.core.command_runner import run_cmd as run_cmd_impl
 from allcanuse_mcp.core.command_runner import run_powershell as run_powershell_impl
 from allcanuse_mcp.core.command_runner import run_shell as run_shell_impl
 from allcanuse_mcp.core import linux_fallbacks
+from allcanuse_mcp.core.managed_processes import get_managed_process_registry
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 
 
 def register(mcp) -> None:
+    registry = get_managed_process_registry()
+
     @mcp.tool(description=TOOL_DESCRIPTIONS["run_shell"])
     def run_shell(
         command: str,
@@ -91,10 +94,76 @@ def register(mcp) -> None:
             "platform": os.name,
         }
 
+    @mcp.tool(description=TOOL_DESCRIPTIONS["start_managed_process"])
+    def start_managed_process(
+        command: str,
+        purpose: str,
+        cwd: str | None = None,
+        owner: str | None = None,
+        tags: list[str] | None = None,
+        protect_from_accidental_kill: bool = True,
+        notes: str | None = None,
+    ) -> dict:
+        popen_kwargs = {
+            "cwd": cwd or None,
+            "shell": True,
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "stdin": subprocess.DEVNULL,
+        }
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        else:
+            popen_kwargs["start_new_session"] = True
+
+        process = subprocess.Popen(command, **popen_kwargs)
+        entry = registry.register_process(
+            pid=process.pid,
+            command=command,
+            cwd=cwd,
+            name=None,
+            purpose=purpose,
+            owner=owner,
+            tags=tags,
+            protect_from_accidental_kill=protect_from_accidental_kill,
+            notes=notes,
+        )
+        return {
+            "ok": True,
+            "managed_process": entry,
+            "message": "Long-running process started and registered for monitoring. Do not stop it unless the user explicitly asks to stop it.",
+        }
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["list_managed_processes"])
+    def list_managed_processes(include_exited: bool = True) -> dict:
+        return registry.list_processes(include_exited=include_exited)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["get_managed_process"])
+    def get_managed_process(process_id: str) -> dict:
+        return registry.get_process(process_id)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["note_managed_process"])
+    def note_managed_process(process_id: str, note: str) -> dict:
+        return registry.note_process(process_id, note)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["stop_managed_process"])
+    def stop_managed_process(process_id: str, reason: str | None = None, force: bool = True) -> dict:
+        return registry.stop_process(process_id, reason=reason, force=force)
+
     @mcp.tool(description=TOOL_DESCRIPTIONS["kill_process"])
     def kill_process(pid: int | None = None, name: str | None = None, force: bool = True) -> dict:
         if pid is None and not name:
             raise ValueError("Either pid or name must be provided.")
+
+        if pid is not None:
+            managed = registry.find_by_pid(pid)
+            if managed and managed.get("protect_from_accidental_kill"):
+                return {
+                    "ok": False,
+                    "blocked": True,
+                    "error": "This PID is registered as a protected long-running managed process. Use `stop_managed_process` only after the user explicitly asks to stop it.",
+                    "managed_process": managed,
+                }
 
         if psutil is None and linux_fallbacks.linux_procfs_available():
             killed = linux_fallbacks.kill_processes(pid=pid, name=name, force=force)

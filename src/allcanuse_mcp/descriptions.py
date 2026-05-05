@@ -24,6 +24,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     7. 当需要值班、等待条件变化、在用户离开后继续观察任务时，优先使用 `wait`、`wait_until`、`wait_for_file`、`wait_for_process`、`wait_for_port`、`wait_for_http`、`wait_for_window`、`wait_for_desktop_change`、`create_background_task`、`list_background_tasks`、`get_background_task`、`wait_for_background_task`、`summarize_background_task`、`get_task_handoff`。
     8. 当 MCP 已经提供了本地可用工具时，优先直接调用工具，而不是为了同类能力额外安装新库。
     9. 不要因为担心多调用工具而放弃获取必要上下文。只要工具与当前任务直接相关，就应该使用。
+    10. 如果任务是长时间实验、长时间训练、长时间推理、长时间服务、可能持续几小时到几天的后台程序，不要只把它当普通临时进程启动。优先使用长时进程工具登记并保护它，后续只监视、记录、汇报；除非用户明确要求停止，否则不要主动结束这类进程。
 
     推荐组合方式：
     - 代码任务：`list_tree/find_files` -> `search_text/read_file` -> `patch_lines/replace_text/write_file` -> `run_shell` 验证
@@ -31,6 +32,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     - 桌面任务：`get_desktop_context` -> `get_active_window/list_windows` -> `capture_screenshot`
     - 网络任务：`get_network_config` -> `resolve_dns_records/dns_lookup/ping_host` -> `tcp_connect/raw_tcp_exchange/udp_send_receive/websocket_connect` -> `http_head/fetch_response_headers/http_request/get_tls_certificate`
     - 进程任务：`list_processes` -> `get_process_tree/find_port_process` -> `kill_process/start_process`
+    - 长时实验任务：`start_managed_process` -> `get_managed_process/list_managed_processes` -> `wait_for_process` 或 `create_background_task` -> `note_managed_process` -> 只有用户明确要求时才 `stop_managed_process`
     - 值班任务：`create_background_task` -> `create_task_plan` -> `append_task_event/record_task_artifact` -> `wait_for_window/wait_for_desktop_change` -> `get_background_task/list_background_tasks` -> `summarize_background_task/get_task_handoff`
 
     值班模式判断规则：
@@ -57,6 +59,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     - 处理文件时请显式传入目标路径，必要时先调用 `list_tree` 或 `read_file` 确认内容。
     - 如果一个任务需要多步完成，请基于工具输出逐步决策。
     - 如果工具提示缺少系统命令或 Python 依赖，并且当前任务确实需要它，你可以使用 shell 工具安装最小必需依赖后再继续。
+    - 如果你亲手启动了一个长时间实验或推理进程，默认把它视为“持续工作的被托管对象”而不是“做完当前回复就该清理的临时子进程”；除非用户明确说“停止”“关闭”“杀掉”“结束实验”，否则不要主动调用 `kill_process` 结束它。
     - 如果本机访问海外网站、`git clone`、`git push`、`pip install`、`npm install`、`apt install` 或其他海外网络相关动作因超时、连接失败、TLS 握手异常、拉取失败而受阻，不要立刻放弃。先检查本机是否已有可复用代理：优先看 `list_listening_ports` / `find_port_process` 是否存在 `7890`、`7897`、`46464` 等常见代理监听端口，再看 `list_processes` 是否存在 `v2rayN`、`Clash for Windows`、`clash`、`clash-core-service` 等代理进程，必要时也查看 `get_env` 里的代理环境变量。
     - 如果已经发现本机代理存在，就直接在后续网络命令、下载命令、Git、pip、npm、apt 等动作里显式带上代理设置后重试，而不是停在第一次失败。
     - 如果代理端口和代理进程都没有发现，或者带代理重试后仍失败，再明确询问用户是否已经开启代理软件，并请用户协助打开代理后继续。
@@ -758,6 +761,81 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - 最后再用 `kill_process` 做收尾
         """,
     ),
+    "start_managed_process": _doc(
+        "启动一个长时间后台进程并登记为受监视、受保护的长时任务进程。",
+        """
+        输入：
+        - `command`: 要启动的命令
+        - `purpose`: 这个长时进程的用途说明，例如“跑 12 小时推理实验”
+        - `cwd`: 可选工作目录
+        - `owner`: 可选责任人或会话说明
+        - `tags`: 可选标签列表
+        - `protect_from_accidental_kill`: 是否保护它不被普通 `kill_process` 误杀，默认 `true`
+        - `notes`: 可选补充说明
+
+        什么时候优先用它：
+        - 用户让你跑长时间训练、推理、实验、服务、爬虫或批处理任务
+        - 用户明确说“这个进程不要停”“今晚一直跑”“你只负责盯着它”
+        - 你担心后续模型可能把这个进程误当成临时子进程清掉
+
+        推荐组合：
+        - 先 `start_managed_process`
+        - 再用 `get_managed_process`、`list_managed_processes`、`wait_for_process`、`create_background_task` 监视它
+        - 中途用 `note_managed_process` 记录进度、路径、日志位置
+        - 只有用户明确要求停止时才 `stop_managed_process`
+
+        调用示例：
+        - `start_managed_process(command="python run_infer.py --config exp.yaml", purpose="跑今晚的长时推理实验")`
+        - `start_managed_process(command="bash train.sh", cwd="/workspace/project", purpose="训练模型到明早", tags=["train","overnight"])`
+        """,
+    ),
+    "list_managed_processes": _doc(
+        "列出当前已登记的长时后台进程。",
+        """
+        输入：
+        - `include_exited`: 是否包含已退出的长时进程，默认 `true`
+
+        调用示例：
+        - `list_managed_processes()`
+        - `list_managed_processes(include_exited=False)`
+        """,
+    ),
+    "get_managed_process": _doc(
+        "查看某个长时后台进程的当前状态。",
+        """
+        输入：
+        - `process_id`: 长时进程登记 ID
+
+        调用示例：
+        - `get_managed_process(process_id="mp-abc123")`
+        """,
+    ),
+    "note_managed_process": _doc(
+        "给某个长时后台进程补充备注，适合记录实验阶段、日志路径、检查结果。",
+        """
+        输入：
+        - `process_id`: 长时进程登记 ID
+        - `note`: 要记录的备注内容
+
+        调用示例：
+        - `note_managed_process(process_id="mp-abc123", note="日志输出在 logs/run-01.txt，已稳定运行 2 小时")`
+        """,
+    ),
+    "stop_managed_process": _doc(
+        "显式停止某个已登记的长时后台进程。",
+        """
+        输入：
+        - `process_id`: 长时进程登记 ID
+        - `reason`: 可选停止原因
+        - `force`: 是否强制停止，默认 `true`
+
+        使用约定：
+        - 只有在用户明确要求停止、关闭、杀掉、结束实验时才使用它
+
+        调用示例：
+        - `stop_managed_process(process_id="mp-abc123", reason="用户要求停止当前实验")`
+        """,
+    ),
     "kill_process": _doc(
         "按 PID 或按进程名结束进程。",
         """
@@ -769,6 +847,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         调用示例：
         - `kill_process(pid=1234)`
         - `kill_process(name="notepad.exe")`
+
+        使用约定：
+        - 如果目标 PID 已登记为受保护的长时进程，普通 `kill_process` 会被阻止
+        - 对于长时间实验、长时间训练、长时间推理，优先改用 `start_managed_process` / `stop_managed_process`
         """,
     ),
     "list_processes": _doc(
@@ -1198,8 +1280,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `max_devices`: 最多探测多少个设备索引，默认 `8`
 
         平台说明：
-        - 使用 `opencv-python`
-        - Win / Linux 都可用，只要当前系统能访问摄像头
+        - 优先使用 `opencv-python`
+        - Linux 下即使没有 OpenCV，也会尝试读取 `/dev/video*` 与 `/sys/class/video4linux`
+        - Windows 下还会尝试通过 PowerShell / CIM 枚举摄像头
+        - 返回结果里会包含当前检测到的 `available_backends`
 
         调用示例：
         - `list_cameras()`
@@ -1217,6 +1301,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         使用建议：
         - 如果后续模型需要真正“看图”，优先把 `return_image_content` 设为 `true`
         - 如果当前客户端不支持图像内容，仍可使用返回的本地路径继续处理
+        - 拍照时会把当前主机上可用的后端尽量都试一遍，而不是只试第一种；Windows 会尝试不同 OpenCV 后端以及 `ffmpeg dshow`；Linux 会尝试 OpenCV、`ffmpeg`、`libcamera-still`、`fswebcam`
+        - 如果某个后端拍出来明显是黑帧，底层会把它视为失败并继续换后端
+        - 返回结果里的 `attempts`、`fallback_attempts`、`attempted_backends` 会告诉你已经尝试过哪些方案
 
         调用示例：
         - `capture_camera_photo()`

@@ -116,6 +116,7 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("list_listening_ports", network_prompt[0]["content"])
         self.assertIn("list_processes", network_prompt[0]["content"])
         self.assertIn("代理软件", network_prompt[0]["content"])
+        self.assertIn("start_managed_process", multi_tool[0]["content"])
         self.assertIn("create_background_task", duty_prompt[0]["content"])
         self.assertIn("create_task_plan", duty_prompt[0]["content"])
         self.assertIn("get_task_handoff", duty_prompt[0]["content"])

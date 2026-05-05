@@ -109,7 +109,12 @@ list_all_tools(include_descriptions=true)
 - `run_shell`
 - `run_cmd`
 - `run_powershell`
+- `start_managed_process`
 - `start_process`
+- `list_managed_processes`
+- `get_managed_process`
+- `note_managed_process`
+- `stop_managed_process`
 - `kill_process`
 - `list_processes`
 - `get_process_tree`

@@ -1,7 +1,7 @@
 # allcanuse-mcp 工具总览
 
 本文档汇总当前 `allcanuse-mcp` 已暴露的全部 MCP tools。  
-当前工具总数：`93`
+当前工具总数：`98`
 
 如果模型已经接入当前 MCP，也可以直接调用：
 
@@ -41,6 +41,7 @@ list_all_tools(include_descriptions=true)
 | `get_env` | 读取环境变量。 |
 | `get_ipconfig` | 兼容旧调用名的网络配置工具。 |
 | `get_network_config` | 获取当前主机的网络配置摘要。 |
+| `get_managed_process` | 查看某个已登记长时后台进程的当前状态。 |
 | `get_process_tree` | 读取指定进程的子进程树。 |
 | `get_system_info` | 读取当前主机的系统概况。 |
 | `get_tls_certificate` | 读取 TLS/HTTPS 证书信息，返回主题、签发者、指纹、有效期和协商协议。 |
@@ -55,12 +56,14 @@ list_all_tools(include_descriptions=true)
 | `list_established_connections` | 列出当前主机已经建立的网络连接。 |
 | `list_listening_ports` | 列出当前主机上处于监听状态的端口。 |
 | `list_network_adapters` | 读取当前主机所有网络适配器和地址信息。 |
+| `list_managed_processes` | 列出当前所有已登记的长时后台进程。 |
 | `list_processes` | 枚举当前主机上的进程。 |
 | `list_recent_files` | 列出最近修改的文件。 |
 | `list_tree` | 递归列出目录树。 |
 | `list_windows` | 枚举桌面窗口标题、句柄、进程信息和窗口矩形。 |
 | `mkdir` | 创建目录。 |
 | `move_path` | 移动或重命名文件/目录。 |
+| `note_managed_process` | 给某个长时后台进程追加备注。 |
 | `patch_lines` | 按行号精确替换文件中的一段内容。 |
 | `ping_host` | 对目标主机执行 ping 测试。 |
 | `read_binary_file` | 读取二进制文件片段，并返回 base64 或 hex 编码。 |
@@ -74,9 +77,11 @@ list_all_tools(include_descriptions=true)
 | `run_shell` | 用当前平台的默认 shell 执行命令。 |
 | `raw_tcp_exchange` | 连接 TCP 服务后发送原始数据，再读取响应，适合做轻量版 netcat / 文本协议调试。 |
 | `search_text` | 在文本文件中搜索关键字或正则表达式。 |
+| `start_managed_process` | 启动并登记一个受保护的长时后台进程。 |
 | `start_process` | 启动一个新进程并返回 PID。 |
 | `stat_path` | 读取文件或目录的元信息。 |
 | `submit_web_form` | 提交网页表单，支持 GET 查询串和 POST 普通表单。 |
+| `stop_managed_process` | 显式停止某个已登记的长时后台进程。 |
 | `tcp_connect` | 测试 TCP 端口是否可连通。 |
 | `trace_http_redirects` | 追踪一个 URL 的 HTTP 重定向链，适合排查 301/302/307/308 跳转问题。 |
 | `trace_route` | 执行 traceroute / tracert，查看到目标主机的路由跳点。 |
@@ -156,14 +161,19 @@ list_all_tools(include_descriptions=true)
 
 ## 2. 命令与进程类工具
 
-这一类工具用于执行命令、启动进程、结束进程、排查端口与进程关系。
+这一类工具用于执行命令、启动进程、结束进程、排查端口与进程关系，也覆盖长时间实验进程的托管、监视与保护。
 
 | 工具名 | 用途 | 常见关键参数 | 示例 |
 | --- | --- | --- | --- |
 | `run_shell` | 用当前平台默认 shell 执行命令 | `command`, `cwd`, `timeout_ms`, `max_output_chars` | `run_shell(command="python --version")` |
 | `run_cmd` | 执行一条命令 | `command`, `cwd`, `timeout_ms`, `max_output_chars` | `run_cmd(command="dir")` |
 | `run_powershell` | 执行 PowerShell 脚本或命令 | `script`, `cwd`, `timeout_ms`, `max_output_chars` | `run_powershell(script="Get-Process | Select-Object -First 5")` |
+| `start_managed_process` | 启动并登记长时后台进程，避免误杀 | `command`, `purpose`, `cwd`, `owner`, `tags`, `protect_from_accidental_kill` | `start_managed_process(command="python run_infer.py", purpose="跑今晚推理实验")` |
 | `start_process` | 启动新进程并返回 PID | `command`, `cwd`, `detach` | `start_process(command="python -m http.server 9000")` |
+| `list_managed_processes` | 列出已登记长时进程 | `include_exited` | `list_managed_processes(include_exited=false)` |
+| `get_managed_process` | 查看某个长时进程 | `process_id` | `get_managed_process(process_id="mp-abc123")` |
+| `note_managed_process` | 给长时进程记备注 | `process_id`, `note` | `note_managed_process(process_id="mp-abc123", note="日志在 logs/run.txt")` |
+| `stop_managed_process` | 显式停止某个长时进程 | `process_id`, `reason`, `force` | `stop_managed_process(process_id="mp-abc123", reason="用户要求停止")` |
 | `kill_process` | 按 PID 或进程名结束进程 | `pid`, `name`, `force` | `kill_process(name="notepad.exe")` |
 | `list_processes` | 枚举进程 | `name_filter`, `limit` | `list_processes(name_filter="python")` |
 | `get_process_tree` | 读取指定进程的子进程树 | `pid`, `max_depth` | `get_process_tree(pid=1234, max_depth=3)` |

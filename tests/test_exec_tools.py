@@ -77,6 +77,13 @@ class ExecToolTests(unittest.TestCase):
             result = self.mcp.get_process_tree(pid=1, max_depth=2)
         self.assertEqual(result, expected)
 
+    def test_managed_process_tools_registered(self) -> None:
+        self.assertTrue(hasattr(self.mcp, "start_managed_process"))
+        self.assertTrue(hasattr(self.mcp, "list_managed_processes"))
+        self.assertTrue(hasattr(self.mcp, "get_managed_process"))
+        self.assertTrue(hasattr(self.mcp, "note_managed_process"))
+        self.assertTrue(hasattr(self.mcp, "stop_managed_process"))
+
 
 if __name__ == "__main__":
     unittest.main()

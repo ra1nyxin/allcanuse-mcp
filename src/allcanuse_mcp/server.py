@@ -41,6 +41,11 @@ def _tool_category(tool_name: str) -> str:
             "run_cmd",
             "run_powershell",
             "start_process",
+            "start_managed_process",
+            "list_managed_processes",
+            "get_managed_process",
+            "note_managed_process",
+            "stop_managed_process",
             "kill_process",
             "list_processes",
             "get_process_tree",
@@ -292,6 +297,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "如果已经发现可用代理，就直接带代理重试当前网络任务；如果仍失败，或根本没发现代理，再询问用户是否开启了代理软件，并请用户帮忙打开后继续。"
                     "如果任务涉及较长等待、用户离线、稍后回来、今晚值班、断线后继续接手，优先切到值班模式：短等用 `wait`，明确条件用 `wait_for_*`，长期托管用 `create_background_task`，交接用 `get_task_handoff`。"
                     "如果用户一句话要求你自己做一小时左右的事情，默认先创建后台任务，再补任务计划、事件和产物记录，不要同步空等一小时。"
+                    "如果任务是长时间训练、长时间推理、长时间实验或需要持续跑几个小时到几天的进程，不要只用普通 `start_process`；优先用 `start_managed_process` 把它登记成受监视、受保护的长时进程，后续只监视、记录和汇报，除非用户明确要求停止，否则不要主动 `kill_process`。"
                     "优先使用结构化工具，而不是把所有事情都交给 shell。"
                     "如果当前任务依赖缺失，并且工具或命令已经明确提示缺少什么，"
                     "你可以先安装最小必需依赖后继续。"
@@ -324,6 +330,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "如果任务涉及桌面，先看桌面上下文，再看活动窗口或截图。"
                     "如果任务涉及较长等待、用户离线、稍后回来、需要跨会话继续，主动考虑值班工具：短等用 `wait`，明确条件用 `wait_for_*`，长期托管用 `create_background_task`，恢复交接用 `get_task_handoff`。"
                     "如果用户说的是“自己做一个小时”“帮我盯一小时”“到点再汇报”，直接按后台值班流程处理：先 `create_background_task`，再 `create_task_plan`，再 `append_task_event`，有产物就 `record_task_artifact`，到点后 `summarize_background_task` 或 `get_task_handoff`。"
+                    "如果任务会启动一个长时间运行的实验、训练、推理或后台服务，优先用 `start_managed_process` 而不是普通 `start_process`，并配合 `get_managed_process`、`list_managed_processes`、`note_managed_process`、`wait_for_process` 或 `create_background_task` 长期监视；未经用户明确要求，不要主动结束这类进程。"
                     "如果工具已经足够，不要额外安装同类依赖；只有在工具明确提示缺依赖且当前任务确实需要时，才安装最小必需依赖。"
                     f"当前任务：{task}"
                 ),
