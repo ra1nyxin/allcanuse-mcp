@@ -22,6 +22,7 @@ from allcanuse_mcp.core.filesystem import write_binary_file as write_binary_file
 from allcanuse_mcp.core.filesystem import write_json_file as write_json_file_impl
 from allcanuse_mcp.core.filesystem import write_text_file
 from allcanuse_mcp.core.filesystem import zip_paths as zip_paths_impl
+from allcanuse_mcp.core.security_scan import scan_suspicious_files as scan_suspicious_files_impl
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 
 
@@ -206,3 +207,21 @@ def register(mcp) -> None:
     @mcp.tool(description=TOOL_DESCRIPTIONS["which_command"])
     def which_command(name: str) -> dict:
         return which_command_impl(name)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["scan_suspicious_files"])
+    def scan_suspicious_files(
+        roots: list[str] | None = None,
+        max_depth: int = 6,
+        max_results: int = 200,
+        include_hidden: bool = True,
+        scan_contents: bool = True,
+        max_file_size_bytes: int = 1_000_000,
+    ) -> dict:
+        return scan_suspicious_files_impl(
+            roots,
+            max_depth=max_depth,
+            max_results=max_results,
+            include_hidden=include_hidden,
+            scan_contents=scan_contents,
+            max_file_size_bytes=max_file_size_bytes,
+        )

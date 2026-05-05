@@ -75,6 +75,9 @@ def _tool_category(tool_name: str) -> str:
             "write_json_file",
             "which_command",
         },
+        "security": {
+            "scan_suspicious_files",
+        },
         "device": {"list_cameras", "capture_camera_photo"},
         "duty": {
             "wait",

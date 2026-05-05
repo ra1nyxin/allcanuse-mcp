@@ -37,6 +37,9 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("extract_links_from_webpage", names)
         self.assertIn("extract_webpage_elements", names)
         self.assertIn("websocket_connect", names)
+        self.assertIn("scan_suspicious_files", names)
+        categories = {item["name"]: item["category"] for item in result["tools"]}
+        self.assertEqual(categories["scan_suspicious_files"], "security")
 
     def test_quick_reference_resource_registered(self) -> None:
         server = create_server()

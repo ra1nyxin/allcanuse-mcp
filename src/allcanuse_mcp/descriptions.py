@@ -1208,6 +1208,26 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `hash_file(path="archive.zip")`
         """,
     ),
+    "scan_suspicious_files": _doc(
+        "扫描本地可疑文件，暴露路径和命中原因，供人工排查。",
+        """
+        输入：
+        - `roots`: 可选扫描根目录列表；不传时扫描桌面、下载、文档、临时目录和启动目录等常见位置
+        - `max_depth`: 最大递归深度，默认 `6`
+        - `max_results`: 最多返回多少条可疑结果，默认 `200`
+        - `include_hidden`: 是否包含隐藏路径，默认 `true`
+        - `scan_contents`: 是否读取小型文本脚本内容做规则匹配，默认 `true`
+        - `max_file_size_bytes`: 单文件内容扫描和哈希上限，默认 `1000000`
+
+        返回：
+        - `findings`: 可疑文件列表，包含绝对路径、相对路径、是否隐藏、是否启动项位置、SHA-256、分数、严重程度和命中规则
+        - 该工具只读扫描，不删除、不隔离、不执行样本；发现结果后应由人工复核
+
+        调用示例：
+        - `scan_suspicious_files(roots=["C:\\\\Users\\\\me\\\\Downloads"], include_hidden=true)`
+        - `scan_suspicious_files(roots=["."], max_depth=4, max_results=50)`
+        """,
+    ),
     "read_binary_file": _doc(
         "读取二进制文件片段，并返回 base64 或 hex 编码。",
         """
