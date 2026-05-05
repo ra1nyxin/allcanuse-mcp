@@ -17,6 +17,7 @@ class FakeCapture:
         self._frame = frame
         self._raises_on_read = raises_on_read
         self.released = False
+        self.read_count = 0
 
     def isOpened(self) -> bool:
         return self._opened
@@ -25,6 +26,7 @@ class FakeCapture:
         return 640.0
 
     def read(self):
+        self.read_count += 1
         if self._raises_on_read is not None:
             raise self._raises_on_read
         return True, self._frame
@@ -124,8 +126,11 @@ class DeviceTests(unittest.TestCase):
 
     def test_capture_camera_photo_handles_runtime_error(self) -> None:
         fake_cv2 = FakeCV2([FakeCapture(raises_on_read=RuntimeError("boom"))])
-        with patch.object(device, "cv2", fake_cv2):
-            result = device.capture_camera_photo()
+        with (
+            patch.object(device, "cv2", fake_cv2),
+            patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
+        ):
+            result = device.capture_camera_photo(warmup_ms=0)
         self.assertFalse(result["ok"])
         self.assertIn("Unable to capture", result["error"])
         self.assertTrue(any("boom" in attempt["error"] for attempt in result["attempts"]))
@@ -135,12 +140,38 @@ class DeviceTests(unittest.TestCase):
         output = Path(tempfile.gettempdir(), "allcanuse-camera-test.png")
         if output.exists():
             output.unlink()
-        with patch.object(device, "cv2", fake_cv2):
-            result = device.capture_camera_photo(output_path=str(output))
+        with (
+            patch.object(device, "cv2", fake_cv2),
+            patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
+        ):
+            result = device.capture_camera_photo(output_path=str(output), warmup_ms=0)
         self.assertTrue(result["ok"])
         self.assertIn(result["backend"], {"opencv", "opencv-dshow", "opencv-msmf", "opencv-v4l2"})
+        self.assertEqual(result["warmup_ms"], 0)
         self.assertTrue(output.exists())
         output.unlink()
+
+    def test_capture_camera_photo_discards_frames_during_warmup(self) -> None:
+        capture = FakeCapture(frame=FakeFrame())
+        fake_cv2 = FakeCV2([capture])
+        output = Path(tempfile.gettempdir(), "allcanuse-camera-warmup-test.png")
+        if output.exists():
+            output.unlink()
+
+        monotonic_values = iter([0.0, 0.01, 0.02, 0.2])
+        with (
+            patch.object(device, "cv2", fake_cv2),
+            patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
+            patch("allcanuse_mcp.core.device.time.monotonic", side_effect=lambda: next(monotonic_values)),
+            patch("allcanuse_mcp.core.device.time.sleep", return_value=None),
+        ):
+            result = device.capture_camera_photo(output_path=str(output), warmup_ms=100)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["warmup_ms"], 100)
+        self.assertEqual(result["warmup_frames_discarded"], 2)
+        self.assertEqual(capture.read_count, 7)
+        output.unlink(missing_ok=True)
 
     def test_capture_camera_photo_retries_opencv_backend_when_first_frame_is_black(self) -> None:
         fake_cv2 = FakeCV2(
@@ -155,8 +186,9 @@ class DeviceTests(unittest.TestCase):
         with (
             patch.object(device, "cv2", fake_cv2),
             patch("allcanuse_mcp.core.device.platform.system", return_value="Windows"),
+            patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
         ):
-            result = device.capture_camera_photo(output_path=str(output))
+            result = device.capture_camera_photo(output_path=str(output), warmup_ms=0)
         self.assertTrue(result["ok"])
         self.assertIn(result["backend"], {"opencv-msmf", "opencv"})
         self.assertTrue(any(item["backend"] == "opencv-dshow" for item in result.get("fallback_attempts", [])))
@@ -168,7 +200,7 @@ class DeviceTests(unittest.TestCase):
             output.unlink()
 
         def fake_run(command: list[str], *, timeout_ms: int = 30_000):
-            output.write_bytes(b"ffmpeg")
+            Path(command[-1]).write_bytes(b"ffmpeg")
             return {"ok": True, "stdout": "", "stderr": "", "returncode": 0}
 
         with (
@@ -177,7 +209,7 @@ class DeviceTests(unittest.TestCase):
             patch("allcanuse_mcp.core.device.shutil.which", side_effect=lambda name: "ffmpeg" if name == "ffmpeg" else None),
             patch("allcanuse_mcp.core.device._run_command_capture", side_effect=fake_run),
         ):
-            result = device.capture_camera_photo(output_path=str(output))
+            result = device.capture_camera_photo(output_path=str(output), warmup_ms=0)
         self.assertTrue(result["ok"])
         self.assertEqual(result["backend"], "ffmpeg")
         output.unlink(missing_ok=True)
@@ -197,8 +229,12 @@ class DeviceTests(unittest.TestCase):
             output.unlink()
         mcp = DummyMCP()
         device_tools.register(mcp)
-        with patch.object(device, "cv2", fake_cv2), patch("allcanuse_mcp.core.device.cv2", fake_cv2):
-            result = mcp.capture_camera_photo(output_path=str(output), return_image_content=True)
+        with (
+            patch.object(device, "cv2", fake_cv2),
+            patch("allcanuse_mcp.core.device.cv2", fake_cv2),
+            patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
+        ):
+            result = mcp.capture_camera_photo(output_path=str(output), warmup_ms=0, return_image_content=True)
         self.assertIsInstance(result, CallToolResult)
         self.assertEqual(result.content[-1].type, "image")
         output.unlink(missing_ok=True)

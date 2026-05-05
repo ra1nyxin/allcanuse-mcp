@@ -15,10 +15,11 @@ def register(mcp) -> None:
     def capture_camera_photo(
         camera_index: int = 0,
         output_path: str | None = None,
+        warmup_ms: int = 10_000,
         return_image_content: bool = False,
         include_image_preview_text: bool = True,
     ):
-        result = capture_camera_photo_impl(camera_index=camera_index, output_path=output_path)
+        result = capture_camera_photo_impl(camera_index=camera_index, output_path=output_path, warmup_ms=warmup_ms)
         if return_image_content and result.get("ok") and result.get("path"):
             summary = (
                 f"摄像头照片已生成：{result['path']}，"

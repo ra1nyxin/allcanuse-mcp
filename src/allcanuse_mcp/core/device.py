@@ -5,6 +5,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -206,8 +207,20 @@ def _opencv_list_cameras(max_devices: int) -> list[dict[str, Any]]:
     return cameras
 
 
-def _opencv_capture_camera_photo(camera_index: int, target: Path, backend_name: str, backend: int | None) -> dict[str, Any]:
+def _normalize_warmup_ms(warmup_ms: int) -> int:
+    return max(0, min(int(warmup_ms), 10_000))
+
+
+def _opencv_capture_camera_photo(
+    camera_index: int,
+    target: Path,
+    backend_name: str,
+    backend: int | None,
+    *,
+    warmup_ms: int = 10_000,
+) -> dict[str, Any]:
     capture = None
+    warmup_ms = _normalize_warmup_ms(warmup_ms)
     try:
         capture = cv2.VideoCapture(camera_index, backend) if backend is not None else cv2.VideoCapture(camera_index)
         if not capture.isOpened():
@@ -217,6 +230,14 @@ def _opencv_capture_camera_photo(camera_index: int, target: Path, backend_name: 
                 "camera_index": camera_index,
                 "backend": backend_name,
             }
+        warmup_frames_discarded = 0
+        if warmup_ms > 0:
+            deadline = time.monotonic() + warmup_ms / 1000
+            while time.monotonic() < deadline:
+                ok, frame = capture.read()
+                if ok and frame is not None:
+                    warmup_frames_discarded += 1
+                time.sleep(0.05)
         frames: list[Any] = []
         for _ in range(5):
             ok, frame = capture.read()
@@ -269,6 +290,8 @@ def _opencv_capture_camera_photo(camera_index: int, target: Path, backend_name: 
             "height": int(height),
             "file_size": target.stat().st_size,
             "brightness": brightness,
+            "warmup_ms": warmup_ms,
+            "warmup_frames_discarded": warmup_frames_discarded,
         }
     except Exception as exc:
         return {
@@ -377,7 +400,8 @@ def _ffmpeg_windows_input(camera_index: int) -> tuple[list[str], str] | None:
     return ["-f", "dshow", "-i", f"video={name}"], name
 
 
-def _ffmpeg_capture_camera_photo(camera_index: int, target: Path) -> dict[str, Any]:
+def _ffmpeg_capture_camera_photo(camera_index: int, target: Path, *, warmup_ms: int = 10_000) -> dict[str, Any]:
+    warmup_ms = _normalize_warmup_ms(warmup_ms)
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         return {"ok": False, "error": "ffmpeg was not found.", "backend": "ffmpeg"}
@@ -406,6 +430,8 @@ def _ffmpeg_capture_camera_photo(camera_index: int, target: Path) -> dict[str, A
         "-loglevel",
         "error",
         *input_args,
+        "-ss",
+        f"{warmup_ms / 1000:.3f}",
         "-frames:v",
         "1",
         str(target),
@@ -444,10 +470,12 @@ def _ffmpeg_capture_camera_photo(camera_index: int, target: Path) -> dict[str, A
         "path": str(target),
         "file_size": target.stat().st_size,
         "source": source,
+        "warmup_ms": warmup_ms,
     }
 
 
-def _libcamera_capture_camera_photo(camera_index: int, target: Path) -> dict[str, Any]:
+def _libcamera_capture_camera_photo(camera_index: int, target: Path, *, warmup_ms: int = 10_000) -> dict[str, Any]:
+    warmup_ms = _normalize_warmup_ms(warmup_ms)
     executable = shutil.which("libcamera-still")
     if executable is None:
         return {"ok": False, "error": "libcamera-still was not found.", "backend": "libcamera-still"}
@@ -457,7 +485,7 @@ def _libcamera_capture_camera_photo(camera_index: int, target: Path) -> dict[str
         str(camera_index),
         "--nopreview",
         "--timeout",
-        "1000",
+        str(max(warmup_ms, 1000)),
         "--output",
         str(target),
     ]
@@ -492,10 +520,12 @@ def _libcamera_capture_camera_photo(camera_index: int, target: Path) -> dict[str
         "camera_index": camera_index,
         "path": str(target),
         "file_size": target.stat().st_size,
+        "warmup_ms": warmup_ms,
     }
 
 
-def _fswebcam_capture_camera_photo(camera_index: int, target: Path) -> dict[str, Any]:
+def _fswebcam_capture_camera_photo(camera_index: int, target: Path, *, warmup_ms: int = 10_000) -> dict[str, Any]:
+    warmup_ms = _normalize_warmup_ms(warmup_ms)
     executable = shutil.which("fswebcam")
     if executable is None:
         return {"ok": False, "error": "fswebcam was not found.", "backend": "fswebcam"}
@@ -503,6 +533,8 @@ def _fswebcam_capture_camera_photo(camera_index: int, target: Path) -> dict[str,
     command = [
         executable,
         "--no-banner",
+        "--delay",
+        str(warmup_ms / 1000),
         "-d",
         device_path,
         str(target),
@@ -541,6 +573,7 @@ def _fswebcam_capture_camera_photo(camera_index: int, target: Path) -> dict[str,
         "path": str(target),
         "file_size": target.stat().st_size,
         "device": device_path,
+        "warmup_ms": warmup_ms,
     }
 
 
@@ -606,8 +639,9 @@ def list_cameras(*, max_devices: int = 8) -> dict[str, Any]:
     return result
 
 
-def capture_camera_photo(camera_index: int = 0, output_path: str | None = None) -> dict[str, Any]:
+def capture_camera_photo(camera_index: int = 0, output_path: str | None = None, warmup_ms: int = 10_000) -> dict[str, Any]:
     target = _prepare_output_path(output_path, camera_index)
+    warmup_ms = _normalize_warmup_ms(warmup_ms)
     attempts: list[dict[str, Any]] = []
     successes: list[dict[str, Any]] = []
     system = platform.system()
@@ -643,6 +677,7 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None) 
                     selected_target,
                     selected_name,
                     selected_backend,
+                    warmup_ms=warmup_ms,
                 ),
             )
     else:
@@ -650,25 +685,47 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None) 
 
     if system == "Linux":
         if shutil.which("ffmpeg"):
-            try_backend("ffmpeg", lambda: _ffmpeg_capture_camera_photo(camera_index, _candidate_photo_path(target, "ffmpeg")))
+            try_backend(
+                "ffmpeg",
+                lambda: _ffmpeg_capture_camera_photo(
+                    camera_index,
+                    _candidate_photo_path(target, "ffmpeg"),
+                    warmup_ms=warmup_ms,
+                ),
+            )
         else:
             attempts.append({"backend": "ffmpeg", "error": "ffmpeg was not found."})
         if shutil.which("libcamera-still"):
             try_backend(
                 "libcamera-still",
-                lambda: _libcamera_capture_camera_photo(camera_index, _candidate_photo_path(target, "libcamera-still")),
+                lambda: _libcamera_capture_camera_photo(
+                    camera_index,
+                    _candidate_photo_path(target, "libcamera-still"),
+                    warmup_ms=warmup_ms,
+                ),
             )
         else:
             attempts.append({"backend": "libcamera-still", "error": "libcamera-still was not found."})
         if shutil.which("fswebcam"):
-            try_backend("fswebcam", lambda: _fswebcam_capture_camera_photo(camera_index, _candidate_photo_path(target, "fswebcam")))
+            try_backend(
+                "fswebcam",
+                lambda: _fswebcam_capture_camera_photo(
+                    camera_index,
+                    _candidate_photo_path(target, "fswebcam"),
+                    warmup_ms=warmup_ms,
+                ),
+            )
         else:
             attempts.append({"backend": "fswebcam", "error": "fswebcam was not found."})
     elif system == "Windows":
         if shutil.which("ffmpeg"):
             try_backend(
                 "ffmpeg-dshow",
-                lambda: _ffmpeg_capture_camera_photo(camera_index, _candidate_photo_path(target, "ffmpeg-dshow")),
+                lambda: _ffmpeg_capture_camera_photo(
+                    camera_index,
+                    _candidate_photo_path(target, "ffmpeg-dshow"),
+                    warmup_ms=warmup_ms,
+                ),
             )
         else:
             attempts.append({"backend": "ffmpeg-dshow", "error": "ffmpeg was not found."})
@@ -701,6 +758,7 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None) 
         "platform": system,
         "camera_index": camera_index,
         "error": f"Unable to capture a photo from camera {camera_index} with the available backends.",
+        "warmup_ms": warmup_ms,
         "available_backends": _detect_available_camera_backends(),
         "attempts": attempts,
     }
