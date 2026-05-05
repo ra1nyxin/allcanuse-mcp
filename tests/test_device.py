@@ -93,6 +93,34 @@ class DeviceTests(unittest.TestCase):
         self.assertGreaterEqual(result["count"], 1)
         self.assertIn("opencv", result["backends_used"])
 
+    def test_list_cameras_uses_media_foundation_on_windows(self) -> None:
+        with (
+            patch.object(device, "cv2", None),
+            patch("allcanuse_mcp.core.device.platform.system", return_value="Windows"),
+            patch.object(device, "media_foundation_available", return_value=True),
+            patch.object(
+                device,
+                "list_video_capture_devices",
+                return_value={
+                    "ok": True,
+                    "devices": [
+                        {
+                            "index": 0,
+                            "backend": "media-foundation",
+                            "name": "Integrated Camera",
+                            "symbolic_link": "camera-symbolic-link",
+                        }
+                    ],
+                },
+            ),
+            patch("allcanuse_mcp.core.device._windows_powershell_camera_entries", return_value=[]),
+        ):
+            result = device.list_cameras(max_devices=4)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["cameras"][0]["backend"], "media-foundation")
+        self.assertEqual(result["cameras"][0]["name"], "Integrated Camera")
+        self.assertIn("media-foundation", result["available_backends"])
+
     def test_list_cameras_linux_fallback_reads_dev_video_entries(self) -> None:
         class FakeGlobPath:
             def __init__(self, value: str) -> None:
@@ -125,15 +153,16 @@ class DeviceTests(unittest.TestCase):
         self.assertEqual(result["cameras"][0]["device"], "/dev/video0")
 
     def test_capture_camera_photo_handles_runtime_error(self) -> None:
-        fake_cv2 = FakeCV2([FakeCapture(raises_on_read=RuntimeError("boom"))])
+        fake_cv2 = FakeCV2([FakeCapture(opened=False)])
         with (
             patch.object(device, "cv2", fake_cv2),
             patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
+            patch.object(device, "capture_camera_photo_with_media_foundation", return_value={"ok": False, "backend": "media-foundation", "error": "mf failed"}),
         ):
             result = device.capture_camera_photo(warmup_ms=0)
         self.assertFalse(result["ok"])
         self.assertIn("Unable to capture", result["error"])
-        self.assertTrue(any("boom" in attempt["error"] for attempt in result["attempts"]))
+        self.assertTrue(any(item["backend"] == "media-foundation" for item in result["attempts"]))
 
     def test_capture_camera_photo_saves_file(self) -> None:
         fake_cv2 = FakeCV2([FakeCapture(frame=FakeFrame())])
@@ -190,7 +219,7 @@ class DeviceTests(unittest.TestCase):
         ):
             result = device.capture_camera_photo(output_path=str(output), warmup_ms=0)
         self.assertTrue(result["ok"])
-        self.assertIn(result["backend"], {"opencv-msmf", "opencv"})
+        self.assertEqual(result["backend"], "opencv-msmf")
         self.assertTrue(any(item["backend"] == "opencv-dshow" for item in result.get("fallback_attempts", [])))
         output.unlink(missing_ok=True)
 
@@ -212,6 +241,40 @@ class DeviceTests(unittest.TestCase):
             result = device.capture_camera_photo(output_path=str(output), warmup_ms=0)
         self.assertTrue(result["ok"])
         self.assertEqual(result["backend"], "ffmpeg")
+        output.unlink(missing_ok=True)
+
+    def test_capture_camera_photo_uses_media_foundation_fallback_on_windows(self) -> None:
+        fake_cv2 = FakeCV2([FakeCapture(opened=False), FakeCapture(opened=False)])
+        output = Path(tempfile.gettempdir(), "allcanuse-camera-mf-fallback-test.png")
+        output.unlink(missing_ok=True)
+
+        def fake_media_foundation_capture(_camera_index: int, target: Path, *, warmup_ms: int = 10_000):
+            target.write_bytes(b"mf")
+            return {
+                "ok": True,
+                "platform": "Windows",
+                "backend": "media-foundation",
+                "camera_index": 0,
+                "path": str(target),
+                "width": 640,
+                "height": 480,
+                "file_size": target.stat().st_size,
+                "warmup_ms": warmup_ms,
+            }
+
+        with (
+            patch.object(device, "cv2", fake_cv2),
+            patch("allcanuse_mcp.core.device.platform.system", return_value="Windows"),
+            patch.object(device, "capture_camera_photo_with_media_foundation", side_effect=fake_media_foundation_capture) as mf_capture,
+            patch("allcanuse_mcp.core.device.shutil.which", return_value=None),
+        ):
+            result = device.capture_camera_photo(output_path=str(output), warmup_ms=250)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["backend"], "media-foundation")
+        self.assertEqual(result["warmup_ms"], 250)
+        self.assertTrue(mf_capture.called)
+        self.assertTrue(any(item["backend"] == "opencv-dshow" for item in result.get("fallback_attempts", [])))
         output.unlink(missing_ok=True)
 
     def test_capture_camera_photo_tool_can_return_image_content(self) -> None:

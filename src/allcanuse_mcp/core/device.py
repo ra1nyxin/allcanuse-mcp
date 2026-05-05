@@ -17,6 +17,17 @@ try:
 except ImportError:
     cv2 = None
 
+try:
+    from allcanuse_mcp.core.windows_media import (
+        capture_camera_photo_with_media_foundation,
+        list_video_capture_devices,
+        media_foundation_available,
+    )
+except Exception:
+    capture_camera_photo_with_media_foundation = None
+    list_video_capture_devices = None
+    media_foundation_available = None
+
 
 def _camera_backend() -> int | None:
     if cv2 is None:
@@ -69,6 +80,8 @@ def _detect_available_camera_backends() -> list[str]:
         if shutil.which("fswebcam"):
             backends.append("fswebcam")
     elif platform.system() == "Windows":
+        if media_foundation_available is not None and media_foundation_available():
+            backends.append("media-foundation")
         backends.append("powershell-cim")
         if shutil.which("ffmpeg"):
             backends.append("ffmpeg-dshow")
@@ -367,6 +380,30 @@ $devices | ConvertTo-Json -Depth 3 -Compress
     return cameras
 
 
+def _windows_media_foundation_camera_entries(max_devices: int) -> list[dict[str, Any]]:
+    if list_video_capture_devices is None:
+        return []
+    result = list_video_capture_devices(max_devices=max_devices)
+    if not result.get("ok"):
+        return []
+    devices = result.get("devices")
+    if not isinstance(devices, list):
+        return []
+    cameras: list[dict[str, Any]] = []
+    for item in devices[: max(1, max_devices)]:
+        if not isinstance(item, dict):
+            continue
+        cameras.append(
+            {
+                "index": item.get("index"),
+                "backend": "media-foundation",
+                "name": item.get("name"),
+                "symbolic_link": item.get("symbolic_link"),
+            }
+        )
+    return cameras
+
+
 def _run_command_capture(command: list[str], *, timeout_ms: int = 30_000) -> dict[str, Any]:
     completed = subprocess.run(
         command,
@@ -391,7 +428,9 @@ def _ffmpeg_linux_input(camera_index: int) -> tuple[list[str], str]:
 
 
 def _ffmpeg_windows_input(camera_index: int) -> tuple[list[str], str] | None:
-    devices = _windows_powershell_camera_entries(max_devices=max(camera_index + 1, 8))
+    devices = _windows_media_foundation_camera_entries(max_devices=max(camera_index + 1, 8))
+    if camera_index >= len(devices) or not devices[camera_index].get("name"):
+        devices = _windows_powershell_camera_entries(max_devices=max(camera_index + 1, 8))
     if camera_index >= len(devices):
         return None
     name = str(devices[camera_index].get("name") or "").replace('"', '\\"')
@@ -610,6 +649,10 @@ def list_cameras(*, max_devices: int = 8) -> dict[str, Any]:
             backends_used.append("linux-devices")
             add_entries(linux_entries)
     elif system == "Windows":
+        mf_entries = _windows_media_foundation_camera_entries(max_devices)
+        if mf_entries:
+            backends_used.append("media-foundation")
+            add_entries(mf_entries)
         ps_entries = _windows_powershell_camera_entries(max_devices)
         if ps_entries:
             backends_used.append("powershell-cim")
@@ -645,6 +688,29 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None, 
     attempts: list[dict[str, Any]] = []
     successes: list[dict[str, Any]] = []
     system = platform.system()
+
+    def finalize_successes() -> dict[str, Any]:
+        best = max(successes, key=_result_quality_score)
+        best_path = Path(str(best["path"]))
+        if best_path != target:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(best_path, target)
+            best["path"] = str(target)
+            best["file_size"] = target.stat().st_size
+        if attempts:
+            best["fallback_attempts"] = attempts
+        best["attempted_backends"] = [item["backend"] for item in attempts] + [item.get("backend", "") for item in successes]
+        for candidate in successes:
+            candidate_path_value = candidate.get("path")
+            if not candidate_path_value:
+                continue
+            candidate_path = Path(str(candidate_path_value))
+            if candidate_path != target and candidate_path.exists():
+                try:
+                    candidate_path.unlink()
+                except OSError:
+                    pass
+        return best
 
     def try_backend(name: str, func) -> dict[str, Any] | None:
         try:
@@ -683,6 +749,9 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None, 
     else:
         attempts.append({"backend": "opencv", "error": "OpenCV is not installed."})
 
+    if successes:
+        return finalize_successes()
+
     if system == "Linux":
         if shutil.which("ffmpeg"):
             try_backend(
@@ -718,6 +787,17 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None, 
         else:
             attempts.append({"backend": "fswebcam", "error": "fswebcam was not found."})
     elif system == "Windows":
+        if capture_camera_photo_with_media_foundation is not None:
+            try_backend(
+                "media-foundation",
+                lambda: capture_camera_photo_with_media_foundation(
+                    camera_index,
+                    _candidate_photo_path(target, "media-foundation"),
+                    warmup_ms=warmup_ms,
+                ),
+            )
+        else:
+            attempts.append({"backend": "media-foundation", "error": "Media Foundation capture is not available."})
         if shutil.which("ffmpeg"):
             try_backend(
                 "ffmpeg-dshow",
@@ -731,27 +811,7 @@ def capture_camera_photo(camera_index: int = 0, output_path: str | None = None, 
             attempts.append({"backend": "ffmpeg-dshow", "error": "ffmpeg was not found."})
 
     if successes:
-        best = max(successes, key=_result_quality_score)
-        best_path = Path(str(best["path"]))
-        if best_path != target:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(best_path, target)
-            best["path"] = str(target)
-            best["file_size"] = target.stat().st_size
-        if attempts:
-            best["fallback_attempts"] = attempts
-        best["attempted_backends"] = [item["backend"] for item in attempts] + [item.get("backend", "") for item in successes]
-        for candidate in successes:
-            candidate_path_value = candidate.get("path")
-            if not candidate_path_value:
-                continue
-            candidate_path = Path(str(candidate_path_value))
-            if candidate_path != target and candidate_path.exists():
-                try:
-                    candidate_path.unlink()
-                except OSError:
-                    pass
-        return best
+        return finalize_successes()
 
     response: dict[str, Any] = {
         "ok": False,
