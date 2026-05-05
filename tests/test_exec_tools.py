@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import tempfile
+import os
 import socket
 import threading
 import unittest
@@ -83,6 +85,29 @@ class ExecToolTests(unittest.TestCase):
         self.assertTrue(hasattr(self.mcp, "get_managed_process"))
         self.assertTrue(hasattr(self.mcp, "note_managed_process"))
         self.assertTrue(hasattr(self.mcp, "stop_managed_process"))
+
+    def test_get_managed_process_returns_log_tails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stdout_path = os.path.join(tmp, "stdout.log")
+            stderr_path = os.path.join(tmp, "stderr.log")
+            result = self.mcp.start_managed_process(
+                command="echo hello from managed process",
+                purpose="test managed process logging",
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+            )
+            process_id = result["managed_process"]["id"]
+            waited = None
+            for _ in range(30):
+                waited = self.mcp.get_managed_process(process_id, tail_chars=2000)
+                if not waited["process"]["running"] and "hello from managed process" in waited["process"].get("stdout_tail", ""):
+                    break
+                threading.Event().wait(0.1)
+
+            self.assertTrue(waited["ok"])
+            self.assertEqual(waited["process"]["stdout_path"], stdout_path)
+            self.assertEqual(waited["process"]["stderr_path"], stderr_path)
+            self.assertIn("hello from managed process", waited["process"].get("stdout_tail", ""))
 
 
 if __name__ == "__main__":

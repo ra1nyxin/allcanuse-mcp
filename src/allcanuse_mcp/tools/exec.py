@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 
 try:
     import psutil
@@ -12,8 +13,25 @@ from allcanuse_mcp.core.command_runner import run_cmd as run_cmd_impl
 from allcanuse_mcp.core.command_runner import run_powershell as run_powershell_impl
 from allcanuse_mcp.core.command_runner import run_shell as run_shell_impl
 from allcanuse_mcp.core import linux_fallbacks
+from allcanuse_mcp.core.managed_processes import default_managed_process_log_paths
 from allcanuse_mcp.core.managed_processes import get_managed_process_registry
+from allcanuse_mcp.core.managed_processes import prepare_managed_process_record_id
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
+
+
+_DETACHED_PROCESSES: list[subprocess.Popen] = []
+_DETACHED_PROCESSES_LOCK = threading.Lock()
+
+
+def _remember_detached_process(process: subprocess.Popen) -> None:
+    with _DETACHED_PROCESSES_LOCK:
+        alive: list[subprocess.Popen] = []
+        for item in _DETACHED_PROCESSES:
+            if item.poll() is None:
+                alive.append(item)
+        if process.poll() is None:
+            alive.append(process)
+        _DETACHED_PROCESSES[:] = alive[-100:]
 
 
 def register(mcp) -> None:
@@ -85,6 +103,8 @@ def register(mcp) -> None:
             popen_kwargs["start_new_session"] = detach
 
         process = subprocess.Popen(command, **popen_kwargs)
+        if detach:
+            _remember_detached_process(process)
         return {
             "ok": True,
             "pid": process.pid,
@@ -103,12 +123,22 @@ def register(mcp) -> None:
         tags: list[str] | None = None,
         protect_from_accidental_kill: bool = True,
         notes: str | None = None,
+        stdout_path: str | None = None,
+        stderr_path: str | None = None,
     ) -> dict:
+        record_id = prepare_managed_process_record_id()
+        default_stdout, default_stderr = default_managed_process_log_paths(record_id)
+        stdout_target = os.path.abspath(stdout_path) if stdout_path else str(default_stdout)
+        stderr_target = os.path.abspath(stderr_path) if stderr_path else str(default_stderr)
+        os.makedirs(os.path.dirname(stdout_target), exist_ok=True)
+        os.makedirs(os.path.dirname(stderr_target), exist_ok=True)
+        stdout_handle = open(stdout_target, "ab", buffering=0)
+        stderr_handle = open(stderr_target, "ab", buffering=0)
         popen_kwargs = {
             "cwd": cwd or None,
             "shell": True,
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
+            "stdout": stdout_handle,
+            "stderr": stderr_handle,
             "stdin": subprocess.DEVNULL,
         }
         if os.name == "nt":
@@ -116,8 +146,14 @@ def register(mcp) -> None:
         else:
             popen_kwargs["start_new_session"] = True
 
-        process = subprocess.Popen(command, **popen_kwargs)
+        try:
+            process = subprocess.Popen(command, **popen_kwargs)
+            _remember_detached_process(process)
+        finally:
+            stdout_handle.close()
+            stderr_handle.close()
         entry = registry.register_process(
+            record_id=record_id,
             pid=process.pid,
             command=command,
             cwd=cwd,
@@ -127,11 +163,13 @@ def register(mcp) -> None:
             tags=tags,
             protect_from_accidental_kill=protect_from_accidental_kill,
             notes=notes,
+            stdout_path=stdout_target,
+            stderr_path=stderr_target,
         )
         return {
             "ok": True,
             "managed_process": entry,
-            "message": "Long-running process started and registered for monitoring. Do not stop it unless the user explicitly asks to stop it.",
+            "message": "Long-running process started, registered, and logging to persistent files. It should keep running if the AI session disconnects.",
         }
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["list_managed_processes"])
@@ -139,8 +177,8 @@ def register(mcp) -> None:
         return registry.list_processes(include_exited=include_exited)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["get_managed_process"])
-    def get_managed_process(process_id: str) -> dict:
-        return registry.get_process(process_id)
+    def get_managed_process(process_id: str, tail_chars: int = 4000) -> dict:
+        return registry.get_process(process_id, tail_chars=tail_chars)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["note_managed_process"])
     def note_managed_process(process_id: str, note: str) -> dict:

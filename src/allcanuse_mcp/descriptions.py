@@ -772,11 +772,14 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `tags`: 可选标签列表
         - `protect_from_accidental_kill`: 是否保护它不被普通 `kill_process` 误杀，默认 `true`
         - `notes`: 可选补充说明
+        - `stdout_path`: 可选 stdout 日志路径；不传时自动写到 `runtime/managed_processes/logs`
+        - `stderr_path`: 可选 stderr 日志路径；不传时自动写到 `runtime/managed_processes/logs`
 
         什么时候优先用它：
         - 用户让你跑长时间训练、推理、实验、服务、爬虫或批处理任务
         - 用户明确说“这个进程不要停”“今晚一直跑”“你只负责盯着它”
         - 你担心后续模型可能把这个进程误当成临时子进程清掉
+        - 任务可能超过当前 AI 会话或客户端连接寿命；这种情况下不要用长时间阻塞的 `run_shell`，要用托管进程写持久日志
 
         推荐组合：
         - 先 `start_managed_process`
@@ -805,9 +808,11 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         """
         输入：
         - `process_id`: 长时进程登记 ID
+        - `tail_chars`: 返回 stdout/stderr 日志尾部的最大字符数，默认 `4000`
 
         调用示例：
         - `get_managed_process(process_id="mp-abc123")`
+        - `get_managed_process(process_id="mp-abc123", tail_chars=12000)`
         """,
     ),
     "note_managed_process": _doc(
