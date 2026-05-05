@@ -38,8 +38,14 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("extract_webpage_elements", names)
         self.assertIn("websocket_connect", names)
         self.assertIn("scan_suspicious_files", names)
+        self.assertIn("deploy_and_update_service", names)
+        self.assertIn("extract_sqlite_content", names)
+        self.assertIn("extract_postgresql_content", names)
+        self.assertIn("extract_mysql_content", names)
         categories = {item["name"]: item["category"] for item in result["tools"]}
         self.assertEqual(categories["scan_suspicious_files"], "security")
+        self.assertEqual(categories["deploy_and_update_service"], "deployment")
+        self.assertEqual(categories["extract_sqlite_content"], "database")
 
     def test_quick_reference_resource_registered(self) -> None:
         server = create_server()

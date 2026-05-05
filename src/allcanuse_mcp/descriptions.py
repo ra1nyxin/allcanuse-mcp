@@ -1298,6 +1298,66 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `which_command(name="python")`
         """,
     ),
+    "deploy_and_update_service": _doc(
+        "一键打包、上传、解包并重启远端服务。",
+        """
+        输入：
+        - `source_path`: 本地项目目录
+        - `remote_host`: 远端主机
+        - `remote_path`: 远端部署根目录
+        - `remote_user`: 可选远端用户名
+        - `ssh_port`: SSH 端口，默认 `22`
+        - `identity_file`: 可选 SSH 私钥路径
+        - `build_command`: 可选本地构建命令
+        - `restart_command`: 可选远端重启命令
+        - `health_check_command`: 可选远端健康检查命令
+        - `exclude_patterns`: 可选排除模式列表
+        - `release_name`: 可选发布版本名
+        - `timeout_ms`: 每一步超时毫秒数
+
+        调用示例：
+        - `deploy_and_update_service(source_path=".", remote_host="10.0.0.12", remote_path="/srv/app", restart_command="systemctl restart app")`
+        """,
+    ),
+    "extract_sqlite_content": _doc(
+        "只读提取 SQLite 数据库内容。",
+        """
+        输入：
+        - `database_path`: SQLite 文件路径
+        - `query`: 查询语句
+        - `limit`: 最多返回多少行
+        - `params`: 可选参数列表
+
+        调用示例：
+        - `extract_sqlite_content(database_path="data.db", query="select * from users limit 10")`
+        """,
+    ),
+    "extract_postgresql_content": _doc(
+        "只读提取 PostgreSQL 数据库内容。",
+        """
+        输入：
+        - `dsn`: PostgreSQL DSN
+        - `query`: 查询语句
+        - `limit`: 最多返回多少行
+        - `params`: 可选参数列表
+
+        调用示例：
+        - `extract_postgresql_content(dsn="postgresql://user:pass@host/db", query="select * from table")`
+        """,
+    ),
+    "extract_mysql_content": _doc(
+        "只读提取 MySQL 数据库内容。",
+        """
+        输入：
+        - `dsn`: MySQL 连接参数对象，或等价 JSON 字符串，例如 `{"host":"127.0.0.1","user":"root","password":"...","database":"app"}`
+        - `query`: 查询语句
+        - `limit`: 最多返回多少行
+        - `params`: 可选参数列表
+
+        调用示例：
+        - `extract_mysql_content(dsn={"host":"127.0.0.1","user":"root","password":"...","database":"app"}, query="select * from table")`
+        """,
+    ),
     "list_cameras": _doc(
         "枚举本机可访问的摄像头设备。",
         """

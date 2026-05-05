@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from allcanuse_mcp.core.filesystem import build_tree
 from allcanuse_mcp.core.filesystem import copy_path as copy_path_impl
 from allcanuse_mcp.core.filesystem import delete_path as delete_path_impl
@@ -22,6 +24,10 @@ from allcanuse_mcp.core.filesystem import write_binary_file as write_binary_file
 from allcanuse_mcp.core.filesystem import write_json_file as write_json_file_impl
 from allcanuse_mcp.core.filesystem import write_text_file
 from allcanuse_mcp.core.filesystem import zip_paths as zip_paths_impl
+from allcanuse_mcp.core.deployment import deploy_and_update_service as deploy_and_update_service_impl
+from allcanuse_mcp.core.database_access import extract_mysql_content as extract_mysql_content_impl
+from allcanuse_mcp.core.database_access import extract_postgresql_content as extract_postgresql_content_impl
+from allcanuse_mcp.core.database_access import extract_sqlite_content as extract_sqlite_content_impl
 from allcanuse_mcp.core.security_scan import scan_suspicious_files as scan_suspicious_files_impl
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 
@@ -225,3 +231,60 @@ def register(mcp) -> None:
             scan_contents=scan_contents,
             max_file_size_bytes=max_file_size_bytes,
         )
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["deploy_and_update_service"])
+    def deploy_and_update_service(
+        source_path: str,
+        remote_host: str,
+        remote_path: str,
+        remote_user: str | None = None,
+        ssh_port: int = 22,
+        identity_file: str | None = None,
+        build_command: str | None = None,
+        restart_command: str | None = None,
+        health_check_command: str | None = None,
+        exclude_patterns: list[str] | None = None,
+        release_name: str | None = None,
+        timeout_ms: int = 300_000,
+    ) -> dict:
+        return deploy_and_update_service_impl(
+            source_path=source_path,
+            remote_host=remote_host,
+            remote_path=remote_path,
+            remote_user=remote_user,
+            ssh_port=ssh_port,
+            identity_file=identity_file,
+            build_command=build_command,
+            restart_command=restart_command,
+            health_check_command=health_check_command,
+            exclude_patterns=exclude_patterns,
+            release_name=release_name,
+            timeout_ms=timeout_ms,
+        )
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["extract_sqlite_content"])
+    def extract_sqlite_content(
+        database_path: str,
+        query: str,
+        limit: int = 1000,
+        params: list[Any] | None = None,
+    ) -> dict:
+        return extract_sqlite_content_impl(database_path, query, limit=limit, params=params)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["extract_postgresql_content"])
+    def extract_postgresql_content(
+        dsn: str,
+        query: str,
+        limit: int = 1000,
+        params: list[Any] | None = None,
+    ) -> dict:
+        return extract_postgresql_content_impl(dsn, query, limit=limit, params=params)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["extract_mysql_content"])
+    def extract_mysql_content(
+        dsn: str | dict[str, Any],
+        query: str,
+        limit: int = 1000,
+        params: list[Any] | None = None,
+    ) -> dict:
+        return extract_mysql_content_impl(dsn, query, limit=limit, params=params)

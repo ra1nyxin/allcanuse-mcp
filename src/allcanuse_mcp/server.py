@@ -78,6 +78,14 @@ def _tool_category(tool_name: str) -> str:
         "security": {
             "scan_suspicious_files",
         },
+        "deployment": {
+            "deploy_and_update_service",
+        },
+        "database": {
+            "extract_sqlite_content",
+            "extract_postgresql_content",
+            "extract_mysql_content",
+        },
         "device": {"list_cameras", "capture_camera_photo"},
         "duty": {
             "wait",
