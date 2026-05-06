@@ -171,8 +171,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "获取当前主机的网络配置摘要。",
         """
         平台行为：
-        - Windows 下执行 `ipconfig /all`
-        - Linux 下优先执行 `ip addr` 和 `ip route`
+        - Windows 下优先执行 `ipconfig /all`，失败后再用 PowerShell `Get-NetIPConfiguration`
+        - Linux 下优先执行 `ip addr` 和 `ip route`，失败后再试 `ifconfig` / `route -n`
+        - 命令不可用时仍会尽量返回结构化 `network_adapters`
 
         输入：
         - `max_output_chars`: 限制返回文本长度，默认 `12000`
@@ -203,6 +204,81 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 
         调用示例：
         - `list_network_adapters()`
+        """,
+    ),
+    "detect_c_toolchains": _doc(
+        "Detect local C compilers, formatters, and build tools.",
+        """
+        Inputs:
+        - none
+
+        Behavior:
+        - Reports compiler availability in fallback order: `gcc`, `clang`, `cl`, `tcc`, `zig cc`
+        - Also reports common C formatters and build tools such as `clang-format`, `make`, `cmake`, and `ninja`
+
+        Examples:
+        - `detect_c_toolchains()`
+        """,
+    ),
+    "compile_c_program": _doc(
+        "Compile one or more C source files with practical compiler fallbacks.",
+        """
+        Inputs:
+        - `source_files`: C source files to compile
+        - `output_path`: optional output binary path
+        - `include_dirs`, `library_dirs`, `libraries`: optional include/library settings
+        - `c_standard`: default `c11`
+        - `extra_args`: optional compiler-specific flags
+        - `cwd`: optional working directory
+        - `preferred_compiler`: optional first compiler to try
+        - `run_after_compile`: when true, runs the output binary after a successful compile
+
+        Behavior:
+        - Tries the preferred compiler first when provided
+        - Otherwise tries `gcc`, then `clang`, then MSVC `cl`, then `tcc`, then `zig cc`
+        - A fallback compiler is used only when the previous compiler is missing or fails
+        - Returns `attempts` so the caller can see exactly which backend compiled or failed
+
+        Examples:
+        - `compile_c_program(source_files=["main.c"])`
+        - `compile_c_program(source_files=["main.c"], output_path="build/app.exe", run_after_compile=true)`
+        """,
+    ),
+    "inspect_c_source": _doc(
+        "Inspect C/C++ source files for includes, defines, and function declarations or definitions.",
+        """
+        Inputs:
+        - `paths`: files or directories to inspect
+        - `recursive`: recurse into directories, default `true`
+        - `max_files`: maximum files to inspect
+
+        Behavior:
+        - Parses common C/C++ file extensions without invoking a compiler
+        - Returns includes, macro definitions, function signatures, per-file line counts, and totals
+
+        Examples:
+        - `inspect_c_source(paths=["src"])`
+        - `inspect_c_source(paths=["main.c"], recursive=false)`
+        """,
+    ),
+    "format_c_code": _doc(
+        "Format or clean up C/C++ source files.",
+        """
+        Inputs:
+        - `paths`: files or directories to format
+        - `in_place`: write changes back to disk when true; otherwise returns formatted text
+        - `style`: clang-format style, default `file`
+        - `recursive`: recurse into directories
+        - `max_files`: maximum files to process
+
+        Behavior:
+        - Uses `clang-format` first
+        - If `clang-format` is missing or fails for a file, falls back to conservative whitespace cleanup only
+        - Fallback cleanup strips trailing whitespace and ensures one final newline; it does not rewrite C syntax
+
+        Examples:
+        - `format_c_code(paths=["main.c"], in_place=true)`
+        - `format_c_code(paths=["src"], recursive=true, style="LLVM")`
         """,
     ),
     "wait": _doc(

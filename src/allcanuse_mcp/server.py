@@ -16,6 +16,7 @@ from allcanuse_mcp.descriptions import render_workflow_duty_watch_markdown
 from allcanuse_mcp.descriptions import render_workflow_network_diagnostics_markdown
 from allcanuse_mcp.descriptions import render_workflow_web_research_markdown
 from allcanuse_mcp.tools import device as device_tools
+from allcanuse_mcp.tools import code as code_tools
 from allcanuse_mcp.tools import duty as duty_tools
 from allcanuse_mcp.tools import exec as exec_tools
 from allcanuse_mcp.tools import files as file_tools
@@ -86,6 +87,12 @@ def _tool_category(tool_name: str) -> str:
             "extract_sqlite_content",
             "extract_postgresql_content",
             "extract_mysql_content",
+        },
+        "code": {
+            "detect_c_toolchains",
+            "compile_c_program",
+            "inspect_c_source",
+            "format_c_code",
         },
         "seo": {
             "audit_seo",
@@ -183,6 +190,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     system_tools.register(mcp)
     exec_tools.register(mcp)
     file_tools.register(mcp)
+    code_tools.register(mcp)
     device_tools.register(mcp)
     duty_tools.register(mcp)
     window_tools.register(mcp)
