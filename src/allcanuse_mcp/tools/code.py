@@ -5,10 +5,13 @@ from allcanuse_mcp.core.c_tools import check_c_syntax as check_c_syntax_impl
 from allcanuse_mcp.core.c_tools import detect_c_toolchains as detect_c_toolchains_impl
 from allcanuse_mcp.core.c_tools import format_c_code as format_c_code_impl
 from allcanuse_mcp.core.c_tools import generate_c_build_files as generate_c_build_files_impl
+from allcanuse_mcp.core.c_tools import generate_c_fixed_point_header as generate_c_fixed_point_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_lookup_table_header as generate_c_lookup_table_header_impl
+from allcanuse_mcp.core.c_tools import generate_c_matrix_math_header as generate_c_matrix_math_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_math_utils_header as generate_c_math_utils_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_numeric_test_harness as generate_c_numeric_test_harness_impl
 from allcanuse_mcp.core.c_tools import generate_c_polynomial_eval_header as generate_c_polynomial_eval_header_impl
+from allcanuse_mcp.core.c_tools import generate_c_statistics_header as generate_c_statistics_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_vector_math_header as generate_c_vector_math_header_impl
 from allcanuse_mcp.core.c_tools import inspect_c_source as inspect_c_source_impl
 from allcanuse_mcp.core.c_tools import preprocess_c_source as preprocess_c_source_impl
@@ -190,6 +193,18 @@ def register(mcp) -> None:
             variable_name=variable_name,
             overwrite=overwrite,
         )
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_matrix_math_header"])
+    def generate_c_matrix_math_header(path: str, prefix: str = "acu", dimensions: list[int] | None = None, overwrite: bool = False) -> dict:
+        return generate_c_matrix_math_header_impl(path, prefix=prefix, dimensions=dimensions, overwrite=overwrite)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_statistics_header"])
+    def generate_c_statistics_header(path: str, prefix: str = "acu", overwrite: bool = False) -> dict:
+        return generate_c_statistics_header_impl(path, prefix=prefix, overwrite=overwrite)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_fixed_point_header"])
+    def generate_c_fixed_point_header(path: str, prefix: str = "acu", fraction_bits: int = 16, overwrite: bool = False) -> dict:
+        return generate_c_fixed_point_header_impl(path, prefix=prefix, fraction_bits=fraction_bits, overwrite=overwrite)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_build_files"])
     def generate_c_build_files(

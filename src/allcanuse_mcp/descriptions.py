@@ -432,6 +432,54 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `generate_c_polynomial_eval_header(path="include/poly.h", function_name="poly_eval", coefficients=[1,2,3])`
         """,
     ),
+    "generate_c_matrix_math_header": _doc(
+        "Generate a C header with inline 2D and 3D matrix helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated structs and functions
+        - `dimensions`: optional list containing `2`, `3`, or both
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - mat2 and mat3 identity, add, multiply, and determinant
+
+        Examples:
+        - `generate_c_matrix_math_header(path="include/acu_matrix_math.h", prefix="acu", dimensions=[2,3])`
+        """,
+    ),
+    "generate_c_statistics_header": _doc(
+        "Generate a C header with basic statistics helpers for numeric arrays.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated helpers
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - sum, mean, variance, rms, dot, min, max
+
+        Examples:
+        - `generate_c_statistics_header(path="include/acu_stats.h", prefix="acu")`
+        """,
+    ),
+    "generate_c_fixed_point_header": _doc(
+        "Generate a C header with basic fixed-point Q-format helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated helpers
+        - `fraction_bits`: number of fractional bits in the Q format
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - conversion from/to double and int
+        - add, subtract, multiply, divide
+
+        Examples:
+        - `generate_c_fixed_point_header(path="include/acu_q.h", prefix="acu", fraction_bits=16)`
+        """,
+    ),
     "generate_c_build_files": _doc(
         "Generate simple CMakeLists.txt and Makefile scaffolding for a C project.",
         """

@@ -9,11 +9,14 @@ from allcanuse_mcp.core.c_tools import check_c_syntax
 from allcanuse_mcp.core.c_tools import compile_c_program
 from allcanuse_mcp.core.c_tools import format_c_code
 from allcanuse_mcp.core.c_tools import evaluate_c_math_expression
+from allcanuse_mcp.core.c_tools import generate_c_fixed_point_header
 from allcanuse_mcp.core.c_tools import generate_c_lookup_table_header
+from allcanuse_mcp.core.c_tools import generate_c_matrix_math_header
 from allcanuse_mcp.core.c_tools import generate_c_math_utils_header
 from allcanuse_mcp.core.c_tools import generate_c_build_files
 from allcanuse_mcp.core.c_tools import generate_c_numeric_test_harness
 from allcanuse_mcp.core.c_tools import generate_c_polynomial_eval_header
+from allcanuse_mcp.core.c_tools import generate_c_statistics_header
 from allcanuse_mcp.core.c_tools import generate_c_vector_math_header
 from allcanuse_mcp.core.c_tools import inspect_c_source
 from allcanuse_mcp.core.c_tools import preprocess_c_source
@@ -281,6 +284,40 @@ class CToolsTests(unittest.TestCase):
         self.assertIn("double result = 3", text)
         self.assertIn("result = result * x + 2", text)
         self.assertIn("result = result * x + 1", text)
+
+    def test_generate_c_matrix_math_header_writes_mat3_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, "matrix.h")
+            result = generate_c_matrix_math_header(str(target), prefix="acu", dimensions=[2, 3])
+            text = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertIn("typedef struct acu_mat2", text)
+        self.assertIn("static inline double acu_mat3_det", text)
+        self.assertIn("acu_mat2_identity", text)
+
+    def test_generate_c_statistics_header_writes_array_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, "stats.h")
+            result = generate_c_statistics_header(str(target), prefix="acu")
+            text = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertIn("static inline double acu_mean", text)
+        self.assertIn("static inline double acu_variance", text)
+        self.assertIn("static inline double acu_rms", text)
+
+    def test_generate_c_fixed_point_header_writes_q_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, "q.h")
+            result = generate_c_fixed_point_header(str(target), prefix="acu", fraction_bits=12)
+            text = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["fraction_bits"], 12)
+        self.assertIn("#define ACU_Q_FRACTION_BITS 12", text)
+        self.assertIn("typedef int32_t acu_q", text)
+        self.assertIn("acu_q_mul", text)
 
 
 if __name__ == "__main__":

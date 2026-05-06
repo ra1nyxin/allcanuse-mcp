@@ -575,6 +575,49 @@ def generate_c_polynomial_eval_header(
     }
 
 
+def generate_c_matrix_math_header(path: str, *, prefix: str = "acu", dimensions: list[int] | None = None, overwrite: bool = False) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", prefix):
+        return {"ok": False, "error": "prefix must be a valid C identifier prefix."}
+    requested = dimensions or [2, 3]
+    invalid = [item for item in requested if item not in {2, 3}]
+    if invalid:
+        return {"ok": False, "error": "dimensions may only contain 2 and 3.", "invalid_dimensions": invalid}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    normalized_dimensions = sorted(set(requested))
+    text = _render_matrix_math_header(prefix, normalized_dimensions)
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "prefix": prefix, "dimensions": normalized_dimensions, "bytes": len(text.encode("utf-8"))}
+
+
+def generate_c_statistics_header(path: str, *, prefix: str = "acu", overwrite: bool = False) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", prefix):
+        return {"ok": False, "error": "prefix must be a valid C identifier prefix."}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = _render_statistics_header(prefix)
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "prefix": prefix, "bytes": len(text.encode("utf-8"))}
+
+
+def generate_c_fixed_point_header(path: str, *, prefix: str = "acu", fraction_bits: int = 16, overwrite: bool = False) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", prefix):
+        return {"ok": False, "error": "prefix must be a valid C identifier prefix."}
+    if fraction_bits < 1 or fraction_bits > 30:
+        return {"ok": False, "error": "fraction_bits must be between 1 and 30."}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = _render_fixed_point_header(prefix, fraction_bits)
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "prefix": prefix, "fraction_bits": fraction_bits, "bytes": len(text.encode("utf-8"))}
+
+
 def generate_c_build_files(
     root: str,
     *,
@@ -1164,6 +1207,177 @@ def _render_polynomial_eval_header(*, function_name: str, coefficients: list[flo
         f"static inline double {function_name}(double {variable_name}) {{\n"
         f"{''.join(lines)}"
         "    return result;\n"
+        "}\n\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _render_matrix_math_header(prefix: str, dimensions: list[int]) -> str:
+    guard = f"{prefix.upper()}_MATRIX_MATH_H"
+    sections = []
+    if 2 in dimensions:
+        sections.append(
+            f"typedef struct {prefix}_mat2 {{ double m[4]; }} {prefix}_mat2;\n\n"
+            f"static inline {prefix}_mat2 {prefix}_mat2_identity(void) {{\n"
+            f"    {prefix}_mat2 value = {{{{1.0, 0.0, 0.0, 1.0}}}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {prefix}_mat2 {prefix}_mat2_add({prefix}_mat2 a, {prefix}_mat2 b) {{\n"
+            f"    {prefix}_mat2 value = {{{{a.m[0] + b.m[0], a.m[1] + b.m[1], a.m[2] + b.m[2], a.m[3] + b.m[3]}}}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {prefix}_mat2 {prefix}_mat2_mul({prefix}_mat2 a, {prefix}_mat2 b) {{\n"
+            f"    {prefix}_mat2 value = {{{{\n"
+            "        a.m[0] * b.m[0] + a.m[1] * b.m[2], a.m[0] * b.m[1] + a.m[1] * b.m[3],\n"
+            "        a.m[2] * b.m[0] + a.m[3] * b.m[2], a.m[2] * b.m[1] + a.m[3] * b.m[3]\n"
+            "    }}}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline double {prefix}_mat2_det({prefix}_mat2 value) {{\n"
+            "    return value.m[0] * value.m[3] - value.m[1] * value.m[2];\n"
+            "}\n"
+        )
+    if 3 in dimensions:
+        sections.append(
+            f"typedef struct {prefix}_mat3 {{ double m[9]; }} {prefix}_mat3;\n\n"
+            f"static inline {prefix}_mat3 {prefix}_mat3_identity(void) {{\n"
+            f"    {prefix}_mat3 value = {{{{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0}}}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {prefix}_mat3 {prefix}_mat3_add({prefix}_mat3 a, {prefix}_mat3 b) {{\n"
+            f"    {prefix}_mat3 value;\n"
+            "    for (int i = 0; i < 9; ++i) {\n"
+            "        value.m[i] = a.m[i] + b.m[i];\n"
+            "    }\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {prefix}_mat3 {prefix}_mat3_mul({prefix}_mat3 a, {prefix}_mat3 b) {{\n"
+            f"    {prefix}_mat3 value;\n"
+            "    for (int row = 0; row < 3; ++row) {\n"
+            "        for (int col = 0; col < 3; ++col) {\n"
+            "            value.m[row * 3 + col] = 0.0;\n"
+            "            for (int k = 0; k < 3; ++k) {\n"
+            "                value.m[row * 3 + col] += a.m[row * 3 + k] * b.m[k * 3 + col];\n"
+            "            }\n"
+            "        }\n"
+            "    }\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline double {prefix}_mat3_det({prefix}_mat3 value) {{\n"
+            "    return value.m[0] * (value.m[4] * value.m[8] - value.m[5] * value.m[7])\n"
+            "        - value.m[1] * (value.m[3] * value.m[8] - value.m[5] * value.m[6])\n"
+            "        + value.m[2] * (value.m[3] * value.m[7] - value.m[4] * value.m[6]);\n"
+            "}\n"
+        )
+    body = "\n\n".join(sections)
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        f"{body}\n\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _render_statistics_header(prefix: str) -> str:
+    guard = f"{prefix.upper()}_STATISTICS_H"
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        "#include <math.h>\n"
+        "#include <stddef.h>\n\n"
+        f"static inline double {prefix}_sum(const double *values, size_t count) {{\n"
+        "    double total = 0.0;\n"
+        "    for (size_t i = 0; i < count; ++i) {\n"
+        "        total += values[i];\n"
+        "    }\n"
+        "    return total;\n"
+        "}\n\n"
+        f"static inline double {prefix}_mean(const double *values, size_t count) {{\n"
+        f"    return count == 0 ? 0.0 : {prefix}_sum(values, count) / (double)count;\n"
+        "}\n\n"
+        f"static inline double {prefix}_variance(const double *values, size_t count) {{\n"
+        "    if (count == 0) {\n"
+        "        return 0.0;\n"
+        "    }\n"
+        f"    const double mean = {prefix}_mean(values, count);\n"
+        "    double total = 0.0;\n"
+        "    for (size_t i = 0; i < count; ++i) {\n"
+        "        const double delta = values[i] - mean;\n"
+        "        total += delta * delta;\n"
+        "    }\n"
+        "    return total / (double)count;\n"
+        "}\n\n"
+        f"static inline double {prefix}_rms(const double *values, size_t count) {{\n"
+        "    if (count == 0) {\n"
+        "        return 0.0;\n"
+        "    }\n"
+        "    double total = 0.0;\n"
+        "    for (size_t i = 0; i < count; ++i) {\n"
+        "        total += values[i] * values[i];\n"
+        "    }\n"
+        "    return sqrt(total / (double)count);\n"
+        "}\n\n"
+        f"static inline double {prefix}_dot(const double *a, const double *b, size_t count) {{\n"
+        "    double total = 0.0;\n"
+        "    for (size_t i = 0; i < count; ++i) {\n"
+        "        total += a[i] * b[i];\n"
+        "    }\n"
+        "    return total;\n"
+        "}\n\n"
+        f"static inline double {prefix}_min(const double *values, size_t count) {{\n"
+        "    if (count == 0) {\n"
+        "        return 0.0;\n"
+        "    }\n"
+        "    double result = values[0];\n"
+        "    for (size_t i = 1; i < count; ++i) {\n"
+        "        result = values[i] < result ? values[i] : result;\n"
+        "    }\n"
+        "    return result;\n"
+        "}\n\n"
+        f"static inline double {prefix}_max(const double *values, size_t count) {{\n"
+        "    if (count == 0) {\n"
+        "        return 0.0;\n"
+        "    }\n"
+        "    double result = values[0];\n"
+        "    for (size_t i = 1; i < count; ++i) {\n"
+        "        result = values[i] > result ? values[i] : result;\n"
+        "    }\n"
+        "    return result;\n"
+        "}\n\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _render_fixed_point_header(prefix: str, fraction_bits: int) -> str:
+    guard = f"{prefix.upper()}_FIXED_POINT_H"
+    scale = 1 << fraction_bits
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        "#include <stdint.h>\n\n"
+        f"#define {prefix.upper()}_Q_FRACTION_BITS {fraction_bits}\n"
+        f"#define {prefix.upper()}_Q_SCALE {scale}\n\n"
+        f"typedef int32_t {prefix}_q;\n\n"
+        f"static inline {prefix}_q {prefix}_q_from_int(int32_t value) {{\n"
+        f"    return ({prefix}_q)(value << {prefix.upper()}_Q_FRACTION_BITS);\n"
+        "}\n\n"
+        f"static inline double {prefix}_q_to_double({prefix}_q value) {{\n"
+        f"    return (double)value / (double){prefix.upper()}_Q_SCALE;\n"
+        "}\n\n"
+        f"static inline {prefix}_q {prefix}_q_from_double(double value) {{\n"
+        f"    return ({prefix}_q)(value * (double){prefix.upper()}_Q_SCALE);\n"
+        "}\n\n"
+        f"static inline {prefix}_q {prefix}_q_add({prefix}_q a, {prefix}_q b) {{\n"
+        "    return a + b;\n"
+        "}\n\n"
+        f"static inline {prefix}_q {prefix}_q_sub({prefix}_q a, {prefix}_q b) {{\n"
+        "    return a - b;\n"
+        "}\n\n"
+        f"static inline {prefix}_q {prefix}_q_mul({prefix}_q a, {prefix}_q b) {{\n"
+        f"    return ({prefix}_q)(((int64_t)a * (int64_t)b) >> {prefix.upper()}_Q_FRACTION_BITS);\n"
+        "}\n\n"
+        f"static inline {prefix}_q {prefix}_q_div({prefix}_q a, {prefix}_q b) {{\n"
+        f"    return ({prefix}_q)(((int64_t)a << {prefix.upper()}_Q_FRACTION_BITS) / (int64_t)b);\n"
         "}\n\n"
         f"#endif /* {guard} */\n"
     )
