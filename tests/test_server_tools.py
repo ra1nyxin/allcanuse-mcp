@@ -50,6 +50,10 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("preprocess_c_source", names)
         self.assertIn("inspect_c_source", names)
         self.assertIn("scan_c_memory_risks", names)
+        self.assertIn("scan_c_numeric_risks", names)
+        self.assertIn("evaluate_c_math_expression", names)
+        self.assertIn("generate_c_numeric_test_harness", names)
+        self.assertIn("generate_c_math_utils_header", names)
         self.assertIn("generate_c_build_files", names)
         self.assertIn("format_c_code", names)
         categories = {item["name"]: item["category"] for item in result["tools"]}
@@ -60,6 +64,7 @@ class ServerToolTests(unittest.TestCase):
         self.assertEqual(categories["audit_seo"], "seo")
         self.assertEqual(categories["optimize_images_for_memory"], "optimization")
         self.assertEqual(categories["scan_c_memory_risks"], "code")
+        self.assertEqual(categories["scan_c_numeric_risks"], "code")
 
     def test_quick_reference_resource_registered(self) -> None:
         server = create_server()

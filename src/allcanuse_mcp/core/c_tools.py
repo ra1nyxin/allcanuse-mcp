@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,40 @@ RISKY_C_CALLS: dict[str, dict[str, str]] = {
     "system": {"severity": "high", "reason": "shell execution can introduce command injection"},
     "popen": {"severity": "high", "reason": "shell execution can introduce command injection"},
 }
+_BASE_MATH_FUNCTION_NAMES = {
+    "acos",
+    "asin",
+    "atan",
+    "atan2",
+    "ceil",
+    "copysign",
+    "cos",
+    "cosh",
+    "exp",
+    "fabs",
+    "floor",
+    "fma",
+    "fmax",
+    "fmin",
+    "fmod",
+    "hypot",
+    "isfinite",
+    "isinf",
+    "isnan",
+    "log",
+    "log10",
+    "nearbyint",
+    "pow",
+    "remainder",
+    "round",
+    "sin",
+    "sinh",
+    "sqrt",
+    "tan",
+    "tanh",
+    "trunc",
+}
+MATH_FUNCTION_NAMES = _BASE_MATH_FUNCTION_NAMES | {f"{name}{suffix}" for name in _BASE_MATH_FUNCTION_NAMES for suffix in ("f", "l")}
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s*([<"])([^>"]+)[>"]', re.MULTILINE)
 _DEFINE_RE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)(?:\s+(.*))?$", re.MULTILINE)
 _FUNCTION_RE = re.compile(
@@ -323,6 +358,118 @@ def scan_c_memory_risks(paths: list[str], *, recursive: bool = True, max_files: 
                 if len(findings) >= max_results:
                     return _memory_risk_result(findings, truncated=True)
     return _memory_risk_result(findings, truncated=False)
+
+
+def scan_c_numeric_risks(paths: list[str], *, recursive: bool = True, max_files: int = 200, max_results: int = 500) -> dict[str, Any]:
+    source_paths = _iter_c_paths(paths, recursive=recursive, max_files=max_files)
+    findings = []
+    for path in source_paths:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        stripped = _strip_comments(text)
+        includes = {item["name"] for item in _parse_includes(stripped)}
+        has_math_h = "math.h" in includes
+        for line_number, line in enumerate(stripped.splitlines(), start=1):
+            findings.extend(_numeric_findings_for_line(path, line_number, line, has_math_h=has_math_h))
+            if len(findings) >= max_results:
+                return _numeric_risk_result(findings[:max_results], truncated=True)
+    return _numeric_risk_result(findings, truncated=False)
+
+
+def evaluate_c_math_expression(
+    expression: str,
+    *,
+    variables: dict[str, float | int] | None = None,
+    c_standard: str = "c11",
+    preferred_compiler: str | None = None,
+    timeout_ms: int = 120_000,
+) -> dict[str, Any]:
+    if not expression.strip():
+        raise ValueError("expression must not be empty")
+    variables = variables or {}
+    invalid_names = [name for name in variables if not re.fullmatch(r"[A-Za-z_]\w*", name)]
+    if invalid_names:
+        return {"ok": False, "error": "Invalid C identifier in variables.", "invalid_names": invalid_names}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        source = root / "math_expr.c"
+        output = root / _default_output_name(source)
+        source.write_text(_render_math_expression_source(expression, variables), encoding="utf-8")
+        link_attempts = []
+        for label, libraries in (("libm", ["m"]), ("default", [])):
+            result = compile_c_program(
+                [str(source)],
+                output_path=str(output),
+                libraries=libraries,
+                c_standard=c_standard,
+                cwd=str(root),
+                preferred_compiler=preferred_compiler,
+                timeout_ms=timeout_ms,
+                run_after_compile=True,
+            )
+            link_attempts.append({"backend": label, "ok": result.get("ok", False), "compile_attempts": result.get("attempts", [])})
+            if not result.get("ok"):
+                continue
+            run_result = result.get("run_result") or {}
+            if not run_result.get("ok"):
+                link_attempts[-1]["run_result"] = run_result
+                continue
+            stdout = (run_result.get("stdout") or "").strip()
+            try:
+                value = float(stdout.splitlines()[-1])
+            except (IndexError, ValueError):
+                value = None
+            return {
+                "ok": True,
+                "backend": result.get("backend"),
+                "link_backend": label,
+                "expression": expression,
+                "variables": variables,
+                "value": value,
+                "stdout": stdout,
+                "attempts": link_attempts,
+            }
+    return {"ok": False, "error": "No C math expression backend succeeded.", "expression": expression, "attempts": link_attempts}
+
+
+def generate_c_numeric_test_harness(
+    path: str,
+    *,
+    function_name: str,
+    cases: list[dict[str, Any]],
+    include_path: str | None = None,
+    tolerance: float = 1e-9,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", function_name):
+        return {"ok": False, "error": "function_name must be a valid C identifier."}
+    if not cases:
+        return {"ok": False, "error": "cases must contain at least one numeric test case."}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        text = _render_numeric_test_harness(function_name=function_name, cases=cases, include_path=include_path, tolerance=tolerance)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc), "path": str(target)}
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "case_count": len(cases), "bytes": len(text.encode("utf-8"))}
+
+
+def generate_c_math_utils_header(path: str, *, prefix: str = "acu", overwrite: bool = False) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", prefix):
+        return {"ok": False, "error": "prefix must be a valid C identifier prefix."}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = _render_math_utils_header(prefix)
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "prefix": prefix, "bytes": len(text.encode("utf-8"))}
 
 
 def generate_c_build_files(
@@ -654,6 +801,116 @@ def _memory_risk_result(findings: list[dict[str, Any]], *, truncated: bool) -> d
         "low": sum(1 for item in findings if item["severity"] == "low"),
     }
     return {"ok": True, "count": len(findings), "summary": summary, "truncated": truncated, "findings": findings}
+
+
+def _numeric_findings_for_line(path: Path, line_number: int, line: str, *, has_math_h: bool) -> list[dict[str, Any]]:
+    findings = []
+    stripped = line.strip()
+    if not stripped:
+        return findings
+    if re.search(r"\b(float|double|long\s+double)\b[^;=]*==", stripped) or re.search(r"==[^;]*\b(float|double|long\s+double)\b", stripped):
+        findings.append(_numeric_finding(path, line_number, "float_equality", "medium", "direct equality on floating-point values is often unstable", stripped))
+    if re.search(r"\b(?:float|double|long\s+double)\s+\w+\s*=\s*[^;]*\b\d+\s*/\s*\d+\b", stripped):
+        findings.append(_numeric_finding(path, line_number, "integer_division_assigned_to_float", "high", "integer division occurs before conversion to floating point", stripped))
+    if re.search(r"\bpow[fl]?\s*\([^,]+,\s*2(?:\.0+)?[fFlL]?\s*\)", stripped):
+        findings.append(_numeric_finding(path, line_number, "pow_square", "low", "x * x is usually clearer and faster than pow(x, 2)", stripped))
+    if re.search(r"\babs\s*\(", stripped):
+        findings.append(_numeric_finding(path, line_number, "abs_on_possible_float", "medium", "use fabs/fabsf/fabsl for floating-point absolute values", stripped))
+    if re.search(r"\bM_PI\b", stripped):
+        findings.append(_numeric_finding(path, line_number, "nonportable_m_pi", "low", "M_PI is not guaranteed by the C standard on every toolchain", stripped))
+    if not has_math_h and any(re.search(rf"\b{name}\s*\(", stripped) for name in MATH_FUNCTION_NAMES):
+        findings.append(_numeric_finding(path, line_number, "math_function_linkage", "low", "math functions may require #include <math.h> and libm on Unix-like toolchains", stripped))
+    return findings
+
+
+def _numeric_finding(path: Path, line_number: int, code: str, severity: str, reason: str, excerpt: str) -> dict[str, Any]:
+    return {"path": str(path), "line_number": line_number, "code": code, "severity": severity, "reason": reason, "excerpt": excerpt[:240]}
+
+
+def _numeric_risk_result(findings: list[dict[str, Any]], *, truncated: bool) -> dict[str, Any]:
+    summary = {
+        "high": sum(1 for item in findings if item["severity"] == "high"),
+        "medium": sum(1 for item in findings if item["severity"] == "medium"),
+        "low": sum(1 for item in findings if item["severity"] == "low"),
+    }
+    return {"ok": True, "count": len(findings), "summary": summary, "truncated": truncated, "findings": findings}
+
+
+def _render_math_expression_source(expression: str, variables: dict[str, float | int]) -> str:
+    declarations = "\n".join(f"    const double {name} = {float(value):.17g};" for name, value in variables.items())
+    return (
+        "#include <math.h>\n"
+        "#include <stdio.h>\n\n"
+        "int main(void) {\n"
+        f"{declarations}\n"
+        f"    const double result = (double)({expression});\n"
+        "    printf(\"%.17g\\n\", result);\n"
+        "    return 0;\n"
+        "}\n"
+    )
+
+
+def _render_numeric_test_harness(*, function_name: str, cases: list[dict[str, Any]], include_path: str | None, tolerance: float) -> str:
+    include = f'#include "{include_path}"\n' if include_path else f"/* Include the declaration for {function_name} before compiling this test. */\n"
+    checks = []
+    for index, case in enumerate(cases, start=1):
+        args = case.get("args", [])
+        expected = case.get("expected")
+        if not isinstance(args, list) or expected is None:
+            raise ValueError("Each case must include args (list) and expected")
+        arg_text = ", ".join(f"{float(value):.17g}" for value in args)
+        checks.append(
+            f"    actual = {function_name}({arg_text});\n"
+            f"    expected = {float(expected):.17g};\n"
+            f"    if (fabs(actual - expected) > tolerance) {{\n"
+            f"        fprintf(stderr, \"case {index} failed: expected %.17g got %.17g\\n\", expected, actual);\n"
+            f"        failures++;\n"
+            f"    }}\n"
+        )
+    return (
+        "#include <math.h>\n"
+        "#include <stdio.h>\n"
+        f"{include}\n"
+        "int main(void) {\n"
+        f"    const double tolerance = {float(tolerance):.17g};\n"
+        "    int failures = 0;\n"
+        "    double actual = 0.0;\n"
+        "    double expected = 0.0;\n"
+        f"{''.join(checks)}"
+        "    if (failures == 0) {\n"
+        "        puts(\"all numeric cases passed\");\n"
+        "    }\n"
+        "    return failures ? 1 : 0;\n"
+        "}\n"
+    )
+
+
+def _render_math_utils_header(prefix: str) -> str:
+    guard = f"{prefix.upper()}_MATH_UTILS_H"
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        "#include <float.h>\n"
+        "#include <math.h>\n\n"
+        f"static inline double {prefix}_clamp(double value, double low, double high) {{\n"
+        "    return value < low ? low : (value > high ? high : value);\n"
+        "}\n\n"
+        f"static inline double {prefix}_lerp(double a, double b, double t) {{\n"
+        "    return a + (b - a) * t;\n"
+        "}\n\n"
+        f"static inline int {prefix}_nearly_equal(double a, double b, double rel_tol, double abs_tol) {{\n"
+        "    const double diff = fabs(a - b);\n"
+        "    const double scale = fmax(fabs(a), fabs(b));\n"
+        "    return diff <= fmax(abs_tol, rel_tol * scale);\n"
+        "}\n\n"
+        f"static inline double {prefix}_deg_to_rad(double degrees) {{\n"
+        "    return degrees * 0.017453292519943295769;\n"
+        "}\n\n"
+        f"static inline double {prefix}_rad_to_deg(double radians) {{\n"
+        "    return radians * 57.295779513082320876;\n"
+        "}\n\n"
+        f"#endif /* {guard} */\n"
+    )
 
 
 def _render_cmake(*, project_name: str, executable_name: str, source_files: list[str], c_standard: str) -> str:

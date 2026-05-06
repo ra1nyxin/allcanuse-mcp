@@ -317,6 +317,72 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `scan_c_memory_risks(paths=["src"])`
         """,
     ),
+    "scan_c_numeric_risks": _doc(
+        "Scan C/C++ source files for common numeric and math pitfalls.",
+        """
+        Inputs:
+        - `paths`: files or directories to scan
+        - `recursive`: recurse into directories
+        - `max_files`: maximum files to scan
+        - `max_results`: maximum findings to return
+
+        Behavior:
+        - Reports integer division assigned to floating-point variables
+        - Reports direct floating-point equality, non-portable `M_PI`, suspicious `abs`, and `pow(x, 2)`
+        - Adds low-severity hints when math functions may need `<math.h>` and libm linkage
+
+        Examples:
+        - `scan_c_numeric_risks(paths=["src"])`
+        """,
+    ),
+    "evaluate_c_math_expression": _doc(
+        "Compile and run a temporary C program to evaluate a math expression.",
+        """
+        Inputs:
+        - `expression`: C expression evaluated as `double`
+        - `variables`: optional mapping of C identifier names to numeric values
+        - `c_standard`: default `c11`
+        - `preferred_compiler`: optional first compiler to try
+
+        Behavior:
+        - Includes `<math.h>` and prints the result with `%.17g`
+        - Tries libm linkage first, then falls back to default linkage
+        - Reuses the compiler fallback chain from `compile_c_program`
+
+        Examples:
+        - `evaluate_c_math_expression(expression="sin(x) * sin(x) + cos(x) * cos(x)", variables={"x": 0.7})`
+        """,
+    ),
+    "generate_c_numeric_test_harness": _doc(
+        "Generate a small C test harness for numeric functions using tolerance checks.",
+        """
+        Inputs:
+        - `path`: output C test file
+        - `function_name`: numeric function to call
+        - `cases`: list of objects with `args` and `expected`
+        - `include_path`: optional header to include
+        - `tolerance`: absolute tolerance for `fabs(actual - expected)`
+        - `overwrite`: replace an existing file only when true
+
+        Examples:
+        - `generate_c_numeric_test_harness(path="test_math.c", function_name="hypot2", cases=[{"args":[3,4],"expected":5}], include_path="mathlib.h")`
+        """,
+    ),
+    "generate_c_math_utils_header": _doc(
+        "Generate a small C header with common inline math helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated helpers
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - clamp, lerp, nearly_equal, deg_to_rad, rad_to_deg
+
+        Examples:
+        - `generate_c_math_utils_header(path="include/acu_math_utils.h", prefix="acu")`
+        """,
+    ),
     "generate_c_build_files": _doc(
         "Generate simple CMakeLists.txt and Makefile scaffolding for a C project.",
         """
