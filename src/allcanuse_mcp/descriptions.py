@@ -383,6 +383,55 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `generate_c_math_utils_header(path="include/acu_math_utils.h", prefix="acu")`
         """,
     ),
+    "generate_c_vector_math_header": _doc(
+        "Generate a C header with inline 2D and 3D vector math helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated structs and functions
+        - `dimensions`: optional list containing `2`, `3`, or both
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - vec2/vec3 make, add, subtract, scale, dot, length, normalize
+        - vec3 cross product when dimension 3 is enabled
+
+        Examples:
+        - `generate_c_vector_math_header(path="include/acu_vector_math.h", prefix="acu", dimensions=[2,3])`
+        """,
+    ),
+    "generate_c_lookup_table_header": _doc(
+        "Generate a C header containing a static math lookup table.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `table_name`: C identifier for the generated array and macros
+        - `function`: supported math function such as `sin`, `cos`, `sqrt`, `log`, or `tanh`
+        - `start`: first x value
+        - `end`: final x value
+        - `samples`: number of table entries
+        - `value_type`: `double` or `float`
+        - `overwrite`: replace an existing file only when true
+
+        Examples:
+        - `generate_c_lookup_table_header(path="include/sin_lut.h", table_name="sin_lut", function="sin", start=0, end=6.283185307179586, samples=256)`
+        """,
+    ),
+    "generate_c_polynomial_eval_header": _doc(
+        "Generate a C header for Horner-form polynomial evaluation.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `function_name`: C function name to generate
+        - `coefficients`: polynomial coefficients
+        - `coefficient_order`: `ascending` for c0,c1,c2 or `descending` for highest degree first
+        - `variable_name`: generated function argument name
+        - `overwrite`: replace an existing file only when true
+
+        Examples:
+        - `generate_c_polynomial_eval_header(path="include/poly.h", function_name="poly_eval", coefficients=[1,2,3])`
+        """,
+    ),
     "generate_c_build_files": _doc(
         "Generate simple CMakeLists.txt and Makefile scaffolding for a C project.",
         """

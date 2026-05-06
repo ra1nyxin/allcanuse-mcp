@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 import shutil
@@ -472,6 +473,108 @@ def generate_c_math_utils_header(path: str, *, prefix: str = "acu", overwrite: b
     return {"ok": True, "path": str(target), "prefix": prefix, "bytes": len(text.encode("utf-8"))}
 
 
+def generate_c_vector_math_header(path: str, *, prefix: str = "acu", dimensions: list[int] | None = None, overwrite: bool = False) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", prefix):
+        return {"ok": False, "error": "prefix must be a valid C identifier prefix."}
+    requested = dimensions or [2, 3]
+    invalid = [item for item in requested if item not in {2, 3}]
+    if invalid:
+        return {"ok": False, "error": "dimensions may only contain 2 and 3.", "invalid_dimensions": invalid}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    normalized_dimensions = sorted(set(requested))
+    text = _render_vector_math_header(prefix, normalized_dimensions)
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "prefix": prefix, "dimensions": normalized_dimensions, "bytes": len(text.encode("utf-8"))}
+
+
+def generate_c_lookup_table_header(
+    path: str,
+    *,
+    table_name: str,
+    function: str,
+    start: float,
+    end: float,
+    samples: int,
+    value_type: str = "double",
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", table_name):
+        return {"ok": False, "error": "table_name must be a valid C identifier."}
+    if samples < 2 or samples > 65536:
+        return {"ok": False, "error": "samples must be between 2 and 65536."}
+    if value_type not in {"double", "float"}:
+        return {"ok": False, "error": "value_type must be double or float."}
+    if not math.isfinite(start) or not math.isfinite(end):
+        return {"ok": False, "error": "start and end must be finite numbers."}
+    math_function = _lookup_table_math_function(function)
+    if math_function is None:
+        return {"ok": False, "error": "Unsupported lookup table function.", "supported_functions": _supported_lookup_functions()}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        values = [math_function(start + (end - start) * index / (samples - 1)) for index in range(samples)]
+        if any(not math.isfinite(float(value)) for value in values):
+            return {"ok": False, "error": "Generated lookup table contains non-finite values.", "path": str(target)}
+    except (OverflowError, ValueError) as exc:
+        return {"ok": False, "error": f"Function domain error: {exc}", "path": str(target)}
+    text = _render_lookup_table_header(table_name=table_name, function=function, start=start, end=end, values=values, value_type=value_type)
+    target.write_text(text, encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target),
+        "table_name": table_name,
+        "function": function,
+        "samples": samples,
+        "start": start,
+        "end": end,
+        "bytes": len(text.encode("utf-8")),
+    }
+
+
+def generate_c_polynomial_eval_header(
+    path: str,
+    *,
+    function_name: str,
+    coefficients: list[float | int],
+    coefficient_order: str = "ascending",
+    variable_name: str = "x",
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", function_name):
+        return {"ok": False, "error": "function_name must be a valid C identifier."}
+    if not re.fullmatch(r"[A-Za-z_]\w*", variable_name):
+        return {"ok": False, "error": "variable_name must be a valid C identifier."}
+    if not coefficients:
+        return {"ok": False, "error": "coefficients must contain at least one value."}
+    if coefficient_order not in {"ascending", "descending"}:
+        return {"ok": False, "error": "coefficient_order must be ascending or descending."}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    numeric_coefficients = [float(value) for value in coefficients]
+    text = _render_polynomial_eval_header(
+        function_name=function_name,
+        coefficients=numeric_coefficients,
+        coefficient_order=coefficient_order,
+        variable_name=variable_name,
+    )
+    target.write_text(text, encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target),
+        "function_name": function_name,
+        "degree": len(coefficients) - 1,
+        "coefficient_order": coefficient_order,
+        "bytes": len(text.encode("utf-8")),
+    }
+
+
 def generate_c_build_files(
     root: str,
     *,
@@ -908,6 +1011,159 @@ def _render_math_utils_header(prefix: str) -> str:
         "}\n\n"
         f"static inline double {prefix}_rad_to_deg(double radians) {{\n"
         "    return radians * 57.295779513082320876;\n"
+        "}\n\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _render_vector_math_header(prefix: str, dimensions: list[int]) -> str:
+    guard = f"{prefix.upper()}_VECTOR_MATH_H"
+    sections = []
+    if 2 in dimensions:
+        sections.append(
+            f"typedef struct {prefix}_vec2 {{ double x; double y; }} {prefix}_vec2;\n\n"
+            f"static inline {prefix}_vec2 {prefix}_vec2_make(double x, double y) {{\n"
+            f"    {prefix}_vec2 value = {{x, y}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {prefix}_vec2 {prefix}_vec2_add({prefix}_vec2 a, {prefix}_vec2 b) {{\n"
+            f"    return {prefix}_vec2_make(a.x + b.x, a.y + b.y);\n"
+            "}\n\n"
+            f"static inline {prefix}_vec2 {prefix}_vec2_sub({prefix}_vec2 a, {prefix}_vec2 b) {{\n"
+            f"    return {prefix}_vec2_make(a.x - b.x, a.y - b.y);\n"
+            "}\n\n"
+            f"static inline {prefix}_vec2 {prefix}_vec2_scale({prefix}_vec2 value, double scalar) {{\n"
+            f"    return {prefix}_vec2_make(value.x * scalar, value.y * scalar);\n"
+            "}\n\n"
+            f"static inline double {prefix}_vec2_dot({prefix}_vec2 a, {prefix}_vec2 b) {{\n"
+            "    return a.x * b.x + a.y * b.y;\n"
+            "}\n\n"
+            f"static inline double {prefix}_vec2_length({prefix}_vec2 value) {{\n"
+            f"    return sqrt({prefix}_vec2_dot(value, value));\n"
+            "}\n\n"
+            f"static inline {prefix}_vec2 {prefix}_vec2_normalize({prefix}_vec2 value) {{\n"
+            f"    const double length = {prefix}_vec2_length(value);\n"
+            f"    return length > 0.0 ? {prefix}_vec2_scale(value, 1.0 / length) : {prefix}_vec2_make(0.0, 0.0);\n"
+            "}\n"
+        )
+    if 3 in dimensions:
+        sections.append(
+            f"typedef struct {prefix}_vec3 {{ double x; double y; double z; }} {prefix}_vec3;\n\n"
+            f"static inline {prefix}_vec3 {prefix}_vec3_make(double x, double y, double z) {{\n"
+            f"    {prefix}_vec3 value = {{x, y, z}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {prefix}_vec3 {prefix}_vec3_add({prefix}_vec3 a, {prefix}_vec3 b) {{\n"
+            f"    return {prefix}_vec3_make(a.x + b.x, a.y + b.y, a.z + b.z);\n"
+            "}\n\n"
+            f"static inline {prefix}_vec3 {prefix}_vec3_sub({prefix}_vec3 a, {prefix}_vec3 b) {{\n"
+            f"    return {prefix}_vec3_make(a.x - b.x, a.y - b.y, a.z - b.z);\n"
+            "}\n\n"
+            f"static inline {prefix}_vec3 {prefix}_vec3_scale({prefix}_vec3 value, double scalar) {{\n"
+            f"    return {prefix}_vec3_make(value.x * scalar, value.y * scalar, value.z * scalar);\n"
+            "}\n\n"
+            f"static inline double {prefix}_vec3_dot({prefix}_vec3 a, {prefix}_vec3 b) {{\n"
+            "    return a.x * b.x + a.y * b.y + a.z * b.z;\n"
+            "}\n\n"
+            f"static inline {prefix}_vec3 {prefix}_vec3_cross({prefix}_vec3 a, {prefix}_vec3 b) {{\n"
+            f"    return {prefix}_vec3_make(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);\n"
+            "}\n\n"
+            f"static inline double {prefix}_vec3_length({prefix}_vec3 value) {{\n"
+            f"    return sqrt({prefix}_vec3_dot(value, value));\n"
+            "}\n\n"
+            f"static inline {prefix}_vec3 {prefix}_vec3_normalize({prefix}_vec3 value) {{\n"
+            f"    const double length = {prefix}_vec3_length(value);\n"
+            f"    return length > 0.0 ? {prefix}_vec3_scale(value, 1.0 / length) : {prefix}_vec3_make(0.0, 0.0, 0.0);\n"
+            "}\n"
+        )
+    body = "\n\n".join(sections)
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        "#include <math.h>\n\n"
+        f"{body}\n\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _lookup_table_math_function(function: str):
+    functions = {
+        "acos": math.acos,
+        "asin": math.asin,
+        "atan": math.atan,
+        "ceil": math.ceil,
+        "cos": math.cos,
+        "cosh": math.cosh,
+        "exp": math.exp,
+        "fabs": math.fabs,
+        "floor": math.floor,
+        "log": math.log,
+        "log10": math.log10,
+        "sin": math.sin,
+        "sinh": math.sinh,
+        "sqrt": math.sqrt,
+        "tan": math.tan,
+        "tanh": math.tanh,
+    }
+    return functions.get(function)
+
+
+def _supported_lookup_functions() -> list[str]:
+    return sorted(
+        [
+            "acos",
+            "asin",
+            "atan",
+            "ceil",
+            "cos",
+            "cosh",
+            "exp",
+            "fabs",
+            "floor",
+            "log",
+            "log10",
+            "sin",
+            "sinh",
+            "sqrt",
+            "tan",
+            "tanh",
+        ]
+    )
+
+
+def _render_lookup_table_header(*, table_name: str, function: str, start: float, end: float, values: list[float], value_type: str) -> str:
+    guard = f"{table_name.upper()}_H"
+    suffix = "f" if value_type == "float" else ""
+    formatted_values = ",\n    ".join(f"{float(value):.17g}{suffix}" for value in values)
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        f"#define {table_name.upper()}_COUNT {len(values)}\n"
+        f"#define {table_name.upper()}_START {float(start):.17g}\n"
+        f"#define {table_name.upper()}_END {float(end):.17g}\n\n"
+        f"static const {value_type} {table_name}[{len(values)}] = {{\n"
+        f"    {formatted_values}\n"
+        "};\n\n"
+        f"/* Values generated from {function}(x) over [{float(start):.17g}, {float(end):.17g}]. */\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _render_polynomial_eval_header(*, function_name: str, coefficients: list[float], coefficient_order: str, variable_name: str) -> str:
+    guard = f"{function_name.upper()}_H"
+    if coefficient_order == "ascending":
+        horner_coefficients = list(reversed(coefficients))
+    else:
+        horner_coefficients = list(coefficients)
+    lines = [f"    double result = {horner_coefficients[0]:.17g};\n"]
+    for coefficient in horner_coefficients[1:]:
+        lines.append(f"    result = result * {variable_name} + {coefficient:.17g};\n")
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        f"static inline double {function_name}(double {variable_name}) {{\n"
+        f"{''.join(lines)}"
+        "    return result;\n"
         "}\n\n"
         f"#endif /* {guard} */\n"
     )

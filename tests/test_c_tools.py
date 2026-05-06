@@ -9,9 +9,12 @@ from allcanuse_mcp.core.c_tools import check_c_syntax
 from allcanuse_mcp.core.c_tools import compile_c_program
 from allcanuse_mcp.core.c_tools import format_c_code
 from allcanuse_mcp.core.c_tools import evaluate_c_math_expression
+from allcanuse_mcp.core.c_tools import generate_c_lookup_table_header
 from allcanuse_mcp.core.c_tools import generate_c_math_utils_header
 from allcanuse_mcp.core.c_tools import generate_c_build_files
 from allcanuse_mcp.core.c_tools import generate_c_numeric_test_harness
+from allcanuse_mcp.core.c_tools import generate_c_polynomial_eval_header
+from allcanuse_mcp.core.c_tools import generate_c_vector_math_header
 from allcanuse_mcp.core.c_tools import inspect_c_source
 from allcanuse_mcp.core.c_tools import preprocess_c_source
 from allcanuse_mcp.core.c_tools import scan_c_memory_risks
@@ -229,6 +232,55 @@ class CToolsTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertIn("static inline double acu_clamp", text)
         self.assertIn("static inline int acu_nearly_equal", text)
+
+    def test_generate_c_vector_math_header_writes_vec3_helpers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, "vec.h")
+            result = generate_c_vector_math_header(str(target), prefix="acu", dimensions=[3])
+            text = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["dimensions"], [3])
+        self.assertIn("typedef struct acu_vec3", text)
+        self.assertIn("static inline acu_vec3 acu_vec3_cross", text)
+        self.assertNotIn("acu_vec2_make", text)
+
+    def test_generate_c_lookup_table_header_writes_samples(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, "sin_lut.h")
+            result = generate_c_lookup_table_header(
+                str(target),
+                table_name="sin_lut",
+                function="sin",
+                start=0.0,
+                end=1.5707963267948966,
+                samples=3,
+                value_type="float",
+            )
+            text = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["samples"], 3)
+        self.assertIn("#define SIN_LUT_COUNT 3", text)
+        self.assertIn("static const float sin_lut[3]", text)
+        self.assertIn("1f", text)
+
+    def test_generate_c_polynomial_eval_header_uses_horner_form(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp, "poly.h")
+            result = generate_c_polynomial_eval_header(
+                str(target),
+                function_name="poly_eval",
+                coefficients=[1, 2, 3],
+            )
+            text = target.read_text(encoding="utf-8")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["degree"], 2)
+        self.assertIn("static inline double poly_eval(double x)", text)
+        self.assertIn("double result = 3", text)
+        self.assertIn("result = result * x + 2", text)
+        self.assertIn("result = result * x + 1", text)
 
 
 if __name__ == "__main__":
