@@ -1263,6 +1263,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 
         Returns:
         - output paths, original and optimized sizes, bytes saved, dimensions, format, and warnings
+        - backend order: Pillow first, then `ffmpeg`, then ImageMagick only when the previous backend fails
 
         Examples:
         - `optimize_images_for_memory(paths=["assets"], recursive=true, output_dir="optimized")`
@@ -1357,6 +1358,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `timeout_ms`: 每一步超时毫秒数
 
         调用示例：
+        Fallback behavior:
+        - Upload uses `scp` first; if it is unavailable or fails, it tries `rsync` over SSH.
+        - Remote commands still require `ssh`; fallback upload is only used after the primary upload path fails.
+
         - `deploy_and_update_service(source_path=".", remote_host="10.0.0.12", remote_path="/srv/app", restart_command="systemctl restart app")`
         """,
     ),
@@ -1368,6 +1373,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `query`: 查询语句
         - `limit`: 最多返回多少行
         - `params`: 可选参数列表
+        - Backend order: `psycopg` first, then `psycopg2` only when the first backend fails.
 
         调用示例：
         - `extract_sqlite_content(database_path="data.db", query="select * from users limit 10")`
@@ -1381,6 +1387,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `query`: 查询语句
         - `limit`: 最多返回多少行
         - `params`: 可选参数列表
+        - Backend order: `mysql.connector` first, then `pymysql`, then `MySQLdb` only after previous backends fail.
 
         调用示例：
         - `extract_postgresql_content(dsn="postgresql://user:pass@host/db", query="select * from table")`
@@ -1448,6 +1455,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - 每个窗口的标题、句柄、PID、进程名、可见性、前台标记
 
         调用示例：
+        Fallback behavior:
+        - Windows uses Win32 APIs.
+        - Linux uses `wmctrl` first, then falls back to `xdotool` for visible windows only.
+
         - `list_windows()`
         - `list_windows(title_filter="Chrome")`
         """,
@@ -1462,6 +1473,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - 前台窗口标题、句柄、PID、进程名、窗口矩形
 
         调用示例：
+        Fallback behavior:
+        - Linux uses `xprop` first, then falls back to `xdotool` when `xprop` is missing or fails.
+
         - `get_active_window()`
         """,
     ),
@@ -1696,6 +1710,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         平台行为：
         - Windows 下调用 `tracert`
         - Linux 下调用 `traceroute`
+        - Fallbacks are only used after the primary command fails: Windows tries `pathping`; Linux tries `tracepath` and then `ping -R`.
 
         调用示例：
         - `trace_route(host="example.com")`
@@ -1956,6 +1971,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - 想查邮件记录、TXT 记录、别名记录，而不仅仅是 IP
         - 想指定某个 DNS 服务器直接查询
 
+        Fallback behavior:
+        - Direct DNS packet queries are tried first.
+        - If A/AAAA queries fail, the tool falls back to the system resolver and marks that backend in the result.
+
         调用示例：
         - `resolve_dns_records(hostname="example.com")`
         - `resolve_dns_records(hostname="example.com", record_types=["MX", "TXT"], timeout_ms=8000)`
@@ -2012,6 +2031,10 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `hostname`: 域名或 IP
         - `count`: 发包次数
         - `timeout_ms`: 超时毫秒数
+
+        Fallback behavior:
+        - Uses the OS ping command first.
+        - If ICMP fails or the command is unavailable, it tries TCP probes on 443 and 80 and reports that as a fallback.
 
         调用示例：
         - `ping_host(hostname="127.0.0.1")`

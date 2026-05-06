@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from allcanuse_mcp.core.asset_optimization import optimize_images_for_memory
 from allcanuse_mcp.core.seo_tools import audit_seo
@@ -61,6 +62,33 @@ class SeoAndOptimizationTests(unittest.TestCase):
             self.assertFalse(item["overwrote_source"])
             self.assertEqual(item["original_dimensions"], [64, 64])
             self.assertEqual(item["optimized_dimensions"], [64, 64])
+
+    def test_optimize_images_for_memory_falls_back_when_pillow_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "sample.png"
+            source.write_bytes(b"fake-image-content")
+            destination = root / "sample.optimized.png"
+
+            def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name == "PIL" or name.startswith("PIL."):
+                    raise ImportError("Pillow unavailable")
+                return original_import(name, globals, locals, fromlist, level)
+
+            def fake_run(command, **_kwargs):
+                Path(command[-1]).write_bytes(b"optimized")
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+            original_import = __import__
+            with patch("builtins.__import__", side_effect=fake_import), patch(
+                "allcanuse_mcp.core.asset_optimization.shutil.which",
+                side_effect=lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None,
+            ), patch("allcanuse_mcp.core.asset_optimization.subprocess.run", side_effect=fake_run):
+                result = optimize_images_for_memory([str(source)])
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["results"][0]["backend"], "ffmpeg")
+            self.assertTrue(destination.exists())
 
 
 if __name__ == "__main__":

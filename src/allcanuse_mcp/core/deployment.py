@@ -162,6 +162,25 @@ def _upload_archive(
     return _run_command_capture(command, timeout_ms=timeout_ms)
 
 
+def _upload_archive_with_rsync(
+    rsync_executable: str,
+    *,
+    local_archive: Path,
+    remote_user: str | None,
+    remote_host: str,
+    ssh_port: int,
+    identity_file: str | None,
+    remote_archive_path: str,
+    timeout_ms: int,
+) -> dict[str, Any]:
+    ssh_parts = ["ssh", "-p", str(int(ssh_port))]
+    if identity_file:
+        ssh_parts.extend(["-i", identity_file])
+    command = [rsync_executable, "-az", "--partial", "-e", " ".join(shlex.quote(part) for part in ssh_parts)]
+    command.extend([str(local_archive), _remote_spec(remote_user, remote_host, remote_archive_path)])
+    return _run_command_capture(command, timeout_ms=timeout_ms)
+
+
 def deploy_and_update_service(
     *,
     source_path: str,
@@ -183,11 +202,17 @@ def deploy_and_update_service(
 
     ssh_executable = _resolve_executable("ssh")
     scp_executable = _resolve_executable("scp")
-    if ssh_executable is None or scp_executable is None:
+    rsync_executable = _resolve_executable("rsync")
+    if ssh_executable is None or (scp_executable is None and rsync_executable is None):
         return {
             "ok": False,
-            "error": "ssh/scp executable was not found.",
-            "missing": [name for name, exe in (("ssh", ssh_executable), ("scp", scp_executable)) if exe is None],
+            "error": "No SSH upload backend was found.",
+            "missing": [
+                name
+                for name, exe in (("ssh", ssh_executable), ("scp", scp_executable), ("rsync", rsync_executable))
+                if exe is None
+            ],
+            "required": "ssh plus either scp or rsync",
         }
 
     release_name = release_name or datetime.now().astimezone().strftime("%Y%m%d-%H%M%S")
@@ -250,16 +275,37 @@ def deploy_and_update_service(
                 "mkdir_result": mkdir_result,
             }
 
-        upload_result = _upload_archive(
-            scp_executable,
-            local_archive=archive_path,
-            remote_user=remote_user,
-            remote_host=remote_host,
-            ssh_port=ssh_port,
-            identity_file=identity_file,
-            remote_archive_path=remote_archive_path,
-            timeout_ms=timeout_ms,
-        )
+        upload_attempts: list[dict[str, Any]] = []
+        if scp_executable is not None:
+            upload_result = _upload_archive(
+                scp_executable,
+                local_archive=archive_path,
+                remote_user=remote_user,
+                remote_host=remote_host,
+                ssh_port=ssh_port,
+                identity_file=identity_file,
+                remote_archive_path=remote_archive_path,
+                timeout_ms=timeout_ms,
+            )
+            upload_result["backend"] = "scp"
+            upload_attempts.append(upload_result)
+        else:
+            upload_result = {"ok": False, "backend": "scp", "error": "scp executable was not found."}
+            upload_attempts.append(upload_result)
+
+        if not upload_result.get("ok") and rsync_executable is not None:
+            upload_result = _upload_archive_with_rsync(
+                rsync_executable,
+                local_archive=archive_path,
+                remote_user=remote_user,
+                remote_host=remote_host,
+                ssh_port=ssh_port,
+                identity_file=identity_file,
+                remote_archive_path=remote_archive_path,
+                timeout_ms=timeout_ms,
+            )
+            upload_result["backend"] = "rsync"
+            upload_attempts.append(upload_result)
         if not upload_result.get("ok"):
             return {
                 "ok": False,
@@ -269,6 +315,7 @@ def deploy_and_update_service(
                 "build_result": build_result,
                 "mkdir_result": mkdir_result,
                 "upload_result": upload_result,
+                "upload_attempts": upload_attempts,
             }
 
         deploy_script = (
@@ -296,6 +343,7 @@ def deploy_and_update_service(
                 "build_result": build_result,
                 "mkdir_result": mkdir_result,
                 "upload_result": upload_result,
+                "upload_attempts": upload_attempts,
                 "extract_result": extract_result,
             }
 
@@ -319,6 +367,7 @@ def deploy_and_update_service(
                     "build_result": build_result,
                     "mkdir_result": mkdir_result,
                     "upload_result": upload_result,
+                    "upload_attempts": upload_attempts,
                     "extract_result": extract_result,
                     "restart_result": restart_result,
                 }
@@ -343,6 +392,7 @@ def deploy_and_update_service(
                     "build_result": build_result,
                     "mkdir_result": mkdir_result,
                     "upload_result": upload_result,
+                    "upload_attempts": upload_attempts,
                     "extract_result": extract_result,
                     "restart_result": restart_result,
                     "health_result": health_result,
@@ -364,6 +414,7 @@ def deploy_and_update_service(
             "build_result": build_result,
             "mkdir_result": mkdir_result,
             "upload_result": upload_result,
+            "upload_attempts": upload_attempts,
             "extract_result": extract_result,
             "restart_result": restart_result,
             "health_result": health_result,

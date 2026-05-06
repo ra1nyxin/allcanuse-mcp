@@ -15,6 +15,7 @@ from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 from allcanuse_mcp.core.networking import DEFAULT_HTTP_USER_AGENT
+from allcanuse_mcp.core.networking import dns_lookup
 from allcanuse_mcp.core.networking import download_file
 from allcanuse_mcp.core.networking import crawl_webpages
 from allcanuse_mcp.core.networking import extract_links_from_webpage
@@ -26,6 +27,7 @@ from allcanuse_mcp.core.networking import get_tls_certificate
 from allcanuse_mcp.core.networking import http_head
 from allcanuse_mcp.core.networking import http_request
 from allcanuse_mcp.core.networking import list_established_connections
+from allcanuse_mcp.core.networking import ping_host
 from allcanuse_mcp.core.networking import raw_tcp_exchange
 from allcanuse_mcp.core.networking import scan_ports
 from allcanuse_mcp.core.networking import resolve_dns_records
@@ -419,6 +421,32 @@ class NetworkingTests(unittest.TestCase):
         self.assertIn("example.com", result["command"])
         mocked_run.assert_called_once()
 
+    def test_trace_route_falls_back_when_primary_command_fails(self) -> None:
+        def fake_run(command, **_kwargs):
+            if command[0] == "traceroute":
+                raise FileNotFoundError("traceroute")
+            return mock.Mock(returncode=0, stdout="tracepath output\n", stderr="")
+
+        with mock.patch("allcanuse_mcp.core.networking.platform.system", return_value="Linux"), mock.patch(
+            "allcanuse_mcp.core.networking.shutil.which",
+            side_effect=lambda name: "/usr/bin/tracepath" if name == "tracepath" else None,
+        ), mock.patch("allcanuse_mcp.core.networking.subprocess.run", side_effect=fake_run):
+            result = trace_route("example.com", max_hops=5, timeout_ms=2000)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["backend"], "tracepath")
+        self.assertGreaterEqual(len(result["attempts"]), 2)
+
+    def test_ping_host_uses_tcp_probe_when_icmp_fails(self) -> None:
+        failed_ping = mock.Mock(returncode=1, stdout="", stderr="blocked")
+        with mock.patch("allcanuse_mcp.core.networking._run_network_command", return_value=failed_ping), mock.patch(
+            "allcanuse_mcp.core.networking.tcp_connect",
+            return_value={"ok": True, "host": "example.com", "port": 443},
+        ):
+            result = ping_host("example.com")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["backend"], "tcp_connectivity_probe")
+        self.assertTrue(result["fallback_probe"]["ok"])
+
     def test_resolve_dns_records_against_local_dns_server(self) -> None:
         with _fake_dns_server() as server:
             result = resolve_dns_records(
@@ -429,6 +457,12 @@ class NetworkingTests(unittest.TestCase):
             )
         self.assertEqual(result["results"]["A"]["answers"][0]["data"], "127.0.0.42")
         self.assertEqual(result["results"]["TXT"]["answers"][0]["data"], ["hello-dns"])
+
+    def test_dns_lookup_returns_structured_error(self) -> None:
+        with mock.patch("allcanuse_mcp.core.networking.socket.getaddrinfo", side_effect=socket.gaierror("no host")):
+            result = dns_lookup("missing.example")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["addresses"], [])
 
     def test_get_tls_certificate_uses_decoded_cert(self) -> None:
         fake_der = b"\x01\x02\x03\x04"

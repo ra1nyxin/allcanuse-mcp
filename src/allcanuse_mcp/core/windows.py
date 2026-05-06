@@ -145,23 +145,21 @@ def _list_windows_linux(
             "hint": "Set DISPLAY/WAYLAND_DISPLAY or run inside a graphical desktop session.",
         }
     if shutil.which("wmctrl") is None:
-        return {
-            "ok": False,
-            "platform": "Linux",
-            "error": "The `wmctrl` command is required to enumerate windows on Linux.",
-            "missing_command": "wmctrl",
-        }
+        return _list_windows_linux_xdotool(
+            include_invisible=include_invisible,
+            title_filter=title_filter,
+            limit=limit,
+            primary_error="The `wmctrl` command is not available.",
+        )
 
-    result = subprocess.run(
-        ["wmctrl", "-lpG"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    result = _run_text_command(["wmctrl", "-lpG"])
     if result.returncode != 0:
-        return {"ok": False, "platform": "Linux", "error": result.stderr.strip() or "wmctrl failed."}
+        return _list_windows_linux_xdotool(
+            include_invisible=include_invisible,
+            title_filter=title_filter,
+            limit=limit,
+            primary_error=result.stderr.strip() or "wmctrl failed.",
+        )
 
     lowered_filter = title_filter.lower() if title_filter else None
     windows: list[dict[str, Any]] = []
@@ -226,6 +224,77 @@ def _list_windows_linux(
     return result
 
 
+def _list_windows_linux_xdotool(
+    *,
+    include_invisible: bool = False,
+    title_filter: str | None = None,
+    limit: int = 200,
+    primary_error: str = "",
+) -> dict[str, Any]:
+    if shutil.which("xdotool") is None:
+        return {
+            "ok": False,
+            "platform": "Linux",
+            "error": "No Linux window enumeration backend succeeded.",
+            "primary_backend": "wmctrl",
+            "primary_error": primary_error,
+            "missing_commands": ["wmctrl", "xdotool"],
+        }
+
+    search = _run_text_command(["xdotool", "search", "--onlyvisible", "--name", "."])
+    if search.returncode != 0:
+        return {
+            "ok": False,
+            "platform": "Linux",
+            "error": search.stderr.strip() or "xdotool search failed.",
+            "primary_backend": "wmctrl",
+            "primary_error": primary_error,
+            "fallback_backend": "xdotool",
+        }
+
+    lowered_filter = title_filter.lower() if title_filter else None
+    windows: list[dict[str, Any]] = []
+    active_id = _get_linux_active_window_id_xdotool()
+    for window_id in search.stdout.splitlines():
+        window_id = window_id.strip()
+        if not window_id:
+            continue
+        title_result = _run_text_command(["xdotool", "getwindowname", window_id])
+        title = title_result.stdout.strip() if title_result.returncode == 0 else ""
+        if lowered_filter and lowered_filter not in title.lower():
+            continue
+        pid = _linux_xdotool_window_pid(window_id)
+        geometry = _linux_xdotool_window_geometry(window_id)
+        windows.append(
+            {
+                "hwnd": window_id,
+                "title": title,
+                "class_name": None,
+                "visible": True,
+                "pid": pid,
+                "process_name": _safe_process_name(pid) if pid is not None else None,
+                "process_exe": _safe_process_exe(pid) if pid is not None else None,
+                "is_foreground": window_id == active_id,
+                "rect": geometry,
+            }
+        )
+        if len(windows) >= limit:
+            break
+
+    return {
+        "ok": True,
+        "platform": "Linux",
+        "backend": "xdotool",
+        "primary_backend": "wmctrl",
+        "primary_error": primary_error,
+        "count": len(windows),
+        "foreground_count": sum(1 for item in windows if item.get("is_foreground")),
+        "background_count": sum(1 for item in windows if not item.get("is_foreground")),
+        "windows": windows,
+        "note": "xdotool only reports visible windows, so include_invisible cannot be honored by this fallback.",
+    }
+
+
 def get_active_window_info() -> dict[str, Any]:
     system = platform.system()
     if system == "Windows":
@@ -246,13 +315,11 @@ def get_active_window_info() -> dict[str, Any]:
                 "error": "No graphical desktop session was detected.",
             }
         if shutil.which("xprop") is None:
-            return {
-                "ok": False,
-                "platform": "Linux",
-                "error": "The `xprop` command is required to query the active window.",
-                "missing_command": "xprop",
-            }
-        window_id = _get_linux_active_window_id()
+            return _get_active_window_linux_xdotool("The `xprop` command is not available.")
+        try:
+            window_id = _get_linux_active_window_id()
+        except Exception as exc:
+            return _get_active_window_linux_xdotool(str(exc))
         if window_id is None:
             return {"ok": True, "platform": "Linux", "found": False}
         details = subprocess.run(
@@ -380,18 +447,108 @@ def _safe_process_exe(pid: int) -> str | None:
     return None
 
 
-def _get_linux_active_window_id() -> str | None:
-    root = subprocess.run(
-        ["xprop", "-root", "_NET_ACTIVE_WINDOW"],
+def _run_text_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
         capture_output=True,
         text=True,
         encoding="utf-8",
         errors="replace",
         check=False,
     )
+
+
+def _get_linux_active_window_id() -> str | None:
+    root = _run_text_command(["xprop", "-root", "_NET_ACTIVE_WINDOW"])
     if root.returncode != 0 or "window id # 0x0" in root.stdout.lower():
         return None
     tokens = root.stdout.split()
     if not tokens:
         return None
     return tokens[-1]
+
+
+def _get_linux_active_window_id_xdotool() -> str | None:
+    if shutil.which("xdotool") is None:
+        return None
+    result = _run_text_command(["xdotool", "getactivewindow"])
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _linux_xdotool_window_pid(window_id: str) -> int | None:
+    result = _run_text_command(["xdotool", "getwindowpid", window_id])
+    if result.returncode != 0:
+        return None
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return None
+
+
+def _linux_xdotool_window_geometry(window_id: str) -> dict[str, int | None]:
+    result = _run_text_command(["xdotool", "getwindowgeometry", "--shell", window_id])
+    values: dict[str, int | None] = {"left": None, "top": None, "right": None, "bottom": None, "width": None, "height": None}
+    if result.returncode != 0:
+        return values
+    parsed: dict[str, int] = {}
+    for line in result.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        try:
+            parsed[key] = int(value)
+        except ValueError:
+            continue
+    x = parsed.get("X")
+    y = parsed.get("Y")
+    width = parsed.get("WIDTH")
+    height = parsed.get("HEIGHT")
+    values.update({"left": x, "top": y, "width": width, "height": height})
+    if x is not None and width is not None:
+        values["right"] = x + width
+    if y is not None and height is not None:
+        values["bottom"] = y + height
+    return values
+
+
+def _get_active_window_linux_xdotool(primary_error: str) -> dict[str, Any]:
+    window_id = _get_linux_active_window_id_xdotool()
+    if window_id is None:
+        if shutil.which("xdotool") is None:
+            return {
+                "ok": False,
+                "platform": "Linux",
+                "error": "No active-window backend succeeded.",
+                "primary_backend": "xprop",
+                "primary_error": primary_error,
+                "missing_commands": ["xprop", "xdotool"],
+            }
+        return {
+            "ok": True,
+            "platform": "Linux",
+            "found": False,
+            "primary_backend": "xprop",
+            "primary_error": primary_error,
+            "fallback_backend": "xdotool",
+        }
+    title_result = _run_text_command(["xdotool", "getwindowname", window_id])
+    pid = _linux_xdotool_window_pid(window_id)
+    return {
+        "ok": True,
+        "platform": "Linux",
+        "found": True,
+        "primary_backend": "xprop",
+        "primary_error": primary_error,
+        "fallback_backend": "xdotool",
+        "window": {
+            "hwnd": window_id,
+            "title": title_result.stdout.strip() if title_result.returncode == 0 else "",
+            "pid": pid,
+            "process_name": _safe_process_name(pid) if pid is not None else None,
+            "process_exe": _safe_process_exe(pid) if pid is not None else None,
+            "rect": _linux_xdotool_window_geometry(window_id),
+            "is_foreground": True,
+        },
+    }

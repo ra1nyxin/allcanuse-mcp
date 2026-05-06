@@ -10,6 +10,7 @@ import os
 import platform
 import random
 import re
+import shutil
 import socket
 import ssl
 import struct
@@ -48,6 +49,20 @@ def _build_default_user_agent() -> str:
 
 
 DEFAULT_HTTP_USER_AGENT = _build_default_user_agent()
+
+
+def _run_network_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        return subprocess.CompletedProcess(command, 127, "", str(exc))
 _DEFAULT_HTTP_HEADERS = {
     "User-Agent": DEFAULT_HTTP_USER_AGENT,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7",
@@ -2107,18 +2122,59 @@ def resolve_dns_records(
             except (OSError, ValueError) as exc:
                 last_error = str(exc)
         else:
-            results[rr_type] = {
-                "ok": False,
-                "dns_server": servers[0] if servers else "",
-                "error": last_error or "No DNS server available",
-                "answers": [],
-            }
+            fallback = _socket_dns_record_fallback(hostname, rr_type)
+            if fallback.get("ok"):
+                fallback["dns_server"] = "system resolver"
+                fallback["primary_error"] = last_error or "No DNS server available"
+                results[rr_type] = fallback
+            else:
+                results[rr_type] = {
+                    "ok": False,
+                    "dns_server": servers[0] if servers else "",
+                    "error": last_error or fallback.get("error") or "No DNS server available",
+                    "answers": [],
+                }
 
     return {
         "hostname": hostname,
         "record_types": requested_types,
         "dns_servers": servers,
         "results": results,
+    }
+
+
+def _socket_dns_record_fallback(hostname: str, rr_type: str) -> dict[str, Any]:
+    if rr_type not in {"A", "AAAA"}:
+        return {"ok": False, "error": f"system resolver fallback does not support {rr_type}", "answers": []}
+    try:
+        family = socket.AF_INET if rr_type == "A" else socket.AF_INET6
+        records = socket.getaddrinfo(hostname, None, family, socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        return {"ok": False, "error": str(exc), "answers": []}
+    answers = []
+    seen: set[str] = set()
+    for _family, _socktype, _proto, canonical_name, sockaddr in records:
+        address = sockaddr[0]
+        if address in seen:
+            continue
+        seen.add(address)
+        answers.append(
+            {
+                "name": canonical_name or hostname,
+                "type": rr_type,
+                "class": "IN",
+                "ttl": None,
+                "data": address,
+                "backend": "socket.getaddrinfo",
+            }
+        )
+    return {
+        "ok": bool(answers),
+        "rcode": None,
+        "rcode_name": "SYSTEM_RESOLVER",
+        "answers": answers,
+        "authorities": [],
+        "additionals": [],
     }
 
 
@@ -2133,7 +2189,10 @@ def reverse_dns_lookup(ip_address: str) -> dict[str, Any]:
 
 
 def dns_lookup(hostname: str) -> dict[str, Any]:
-    results = socket.getaddrinfo(hostname, None)
+    try:
+        results = socket.getaddrinfo(hostname, None)
+    except socket.gaierror as exc:
+        return {"ok": False, "hostname": hostname, "error": str(exc), "addresses": []}
     addresses: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for family, _, _, _, sockaddr in results:
@@ -2144,7 +2203,7 @@ def dns_lookup(hostname: str) -> dict[str, Any]:
             continue
         seen.add(key)
         addresses.append({"family": family_name, "address": address})
-    return {"hostname": hostname, "addresses": addresses}
+    return {"ok": True, "hostname": hostname, "addresses": addresses}
 
 
 def _flatten_name_tuples(values: tuple[tuple[tuple[str, str], ...], ...] | tuple[Any, ...]) -> dict[str, str]:
@@ -2218,22 +2277,45 @@ def trace_route(
 ) -> dict[str, Any]:
     system = platform.system()
     if system == "Windows":
-        command = ["tracert", "-d", "-h", str(max_hops), "-w", str(timeout_ms), host]
+        command_candidates = [
+            ["tracert", "-d", "-h", str(max_hops), "-w", str(timeout_ms), host],
+            ["pathping", "-n", "-h", str(max_hops), "-w", str(timeout_ms), host],
+        ]
     else:
         per_probe_seconds = max(1, int(timeout_ms / 1000))
-        command = ["traceroute", "-n", "-m", str(max_hops), "-w", str(per_probe_seconds), host]
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+        command_candidates = [
+            ["traceroute", "-n", "-m", str(max_hops), "-w", str(per_probe_seconds), host],
+            ["tracepath", "-n", "-m", str(max_hops), host],
+            ["ping", "-R", "-c", "4", "-W", str(per_probe_seconds), host],
+        ]
+    attempts = []
+    result = None
+    command = command_candidates[0]
+    for candidate in command_candidates:
+        if candidate[0] != command_candidates[0][0] and shutil.which(candidate[0]) is None:
+            attempts.append({"backend": candidate[0], "ok": False, "error": "command not found", "command": candidate})
+            continue
+        command = candidate
+        result = _run_network_command(candidate)
+        attempts.append(
+            {
+                "backend": candidate[0],
+                "ok": result.returncode == 0,
+                "returncode": result.returncode,
+                "stderr": result.stderr,
+                "command": candidate,
+            }
+        )
+        if result.returncode == 0:
+            break
+    if result is None:
+        result = subprocess.CompletedProcess(command, 127, "", "No traceroute backend available.")
     return {
         "ok": result.returncode == 0,
         "host": host,
+        "backend": command[0],
         "command": command,
+        "attempts": attempts,
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
@@ -2252,21 +2334,39 @@ def ping_host(hostname: str, *, count: int = 4, timeout_ms: int = 4000) -> dict[
         per_probe_seconds = max(1, int(timeout_ms / 1000))
         command = ["ping", "-c", str(count), "-W", str(per_probe_seconds), hostname]
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    result = _run_network_command(command)
+    fallback_probe = None
+    if result.returncode != 0:
+        fallback_probe = _tcp_reachability_probe(hostname, timeout_ms=timeout_ms)
     return {
-        "ok": result.returncode == 0,
+        "ok": result.returncode == 0 or bool(fallback_probe and fallback_probe.get("ok")),
         "hostname": hostname,
+        "backend": "ping" if result.returncode == 0 else "tcp_connectivity_probe",
         "command": command,
         "returncode": result.returncode,
         "stdout": result.stdout,
         "stderr": result.stderr,
+        "fallback_probe": fallback_probe,
+    }
+
+
+def _tcp_reachability_probe(hostname: str, *, timeout_ms: int) -> dict[str, Any]:
+    attempts = []
+    for port in (443, 80):
+        probe = tcp_connect(hostname, port, timeout_ms=max(500, min(timeout_ms, 3000)))
+        attempts.append(probe)
+        if probe.get("ok"):
+            return {
+                "ok": True,
+                "method": "tcp_connect",
+                "note": "ICMP ping failed or was unavailable, but TCP connectivity succeeded.",
+                "attempts": attempts,
+            }
+    return {
+        "ok": False,
+        "method": "tcp_connect",
+        "note": "ICMP ping failed and TCP fallback ports did not connect.",
+        "attempts": attempts,
     }
 
 

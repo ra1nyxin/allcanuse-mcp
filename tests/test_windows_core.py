@@ -26,7 +26,8 @@ class WindowsCoreTests(unittest.TestCase):
         ), patch.object(windows.shutil, "which", return_value=None):
             result = windows.get_active_window_info()
         self.assertFalse(result["ok"])
-        self.assertEqual(result["missing_command"], "xprop")
+        self.assertIn("xprop", result["missing_commands"])
+        self.assertIn("xdotool", result["missing_commands"])
 
     def test_capture_screenshot_headless_linux_returns_hint(self) -> None:
         with patch.object(windows.platform, "system", return_value="Linux"), patch.object(
@@ -76,6 +77,35 @@ class WindowsCoreTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["count"], 1)
         self.assertIn("foreground_detection_warning", result)
+
+    def test_list_windows_linux_falls_back_to_xdotool_when_wmctrl_missing(self) -> None:
+        def fake_which(name: str) -> str | None:
+            return None if name == "wmctrl" else f"/usr/bin/{name}"
+
+        def fake_run(command, **_kwargs):
+            joined = " ".join(command)
+            if command[:4] == ["xdotool", "search", "--onlyvisible", "--name"]:
+                return SimpleNamespace(returncode=0, stdout="100\n", stderr="")
+            if joined == "xdotool getactivewindow":
+                return SimpleNamespace(returncode=0, stdout="100\n", stderr="")
+            if joined == "xdotool getwindowname 100":
+                return SimpleNamespace(returncode=0, stdout="Demo App\n", stderr="")
+            if joined == "xdotool getwindowpid 100":
+                return SimpleNamespace(returncode=0, stdout="1234\n", stderr="")
+            if joined == "xdotool getwindowgeometry --shell 100":
+                return SimpleNamespace(returncode=0, stdout="X=10\nY=20\nWIDTH=800\nHEIGHT=600\n", stderr="")
+            return SimpleNamespace(returncode=1, stdout="", stderr="unexpected")
+
+        with patch.object(windows.platform, "system", return_value="Linux"), patch.dict(
+            windows.os.environ, {"DISPLAY": ":0"}, clear=True
+        ), patch.object(windows.shutil, "which", side_effect=fake_which), patch.object(
+            windows.subprocess, "run", side_effect=fake_run
+        ):
+            result = windows.list_windows_info()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["backend"], "xdotool")
+        self.assertEqual(result["windows"][0]["title"], "Demo App")
+        self.assertTrue(result["windows"][0]["is_foreground"])
 
     def test_list_windows_windows_skips_bad_window(self) -> None:
         fake_gui = SimpleNamespace(
