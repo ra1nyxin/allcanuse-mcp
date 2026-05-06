@@ -20,6 +20,7 @@ from allcanuse_mcp.tools import duty as duty_tools
 from allcanuse_mcp.tools import exec as exec_tools
 from allcanuse_mcp.tools import files as file_tools
 from allcanuse_mcp.tools import network as network_tools
+from allcanuse_mcp.tools import optimization as optimization_tools
 from allcanuse_mcp.tools import system as system_tools
 from allcanuse_mcp.tools import windows as window_tools
 
@@ -85,6 +86,12 @@ def _tool_category(tool_name: str) -> str:
             "extract_sqlite_content",
             "extract_postgresql_content",
             "extract_mysql_content",
+        },
+        "seo": {
+            "audit_seo",
+        },
+        "optimization": {
+            "optimize_images_for_memory",
         },
         "device": {"list_cameras", "capture_camera_photo"},
         "duty": {
@@ -180,6 +187,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     duty_tools.register(mcp)
     window_tools.register(mcp)
     network_tools.register(mcp)
+    optimization_tools.register(mcp)
 
     @mcp.resource(
         "resource://guides/index",

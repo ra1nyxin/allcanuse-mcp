@@ -1228,6 +1228,47 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `scan_suspicious_files(roots=["."], max_depth=4, max_results=50)`
         """,
     ),
+    "audit_seo": _doc(
+        "Audit local HTML or one URL for SEO readiness.",
+        """
+        Inputs:
+        - `target`: a local HTML file, local site directory, or one http/https URL
+        - `max_pages`: maximum local HTML pages to scan when `target` is a directory
+        - `include_hidden`: include hidden files and directories during local scans
+        - `max_file_size_bytes`: maximum bytes read from each HTML page
+        - `timeout_ms`: URL fetch timeout
+
+        Returns:
+        - `pages`: per-page title, meta description, H1, image, link, canonical, and mobile metadata summary
+        - `issues`: structured SEO findings with severity, code, path, line, and detail when available
+        - `site_assets`: local robots.txt and sitemap.xml presence when scanning local files
+
+        Examples:
+        - `audit_seo(target="dist")`
+        - `audit_seo(target="index.html")`
+        """,
+    ),
+    "optimize_images_for_memory": _doc(
+        "Optimize image files to reduce memory and asset size while preserving the main visual result by default.",
+        """
+        Inputs:
+        - `paths`: files or directories to optimize
+        - `output_dir`: optional destination directory; by default writes beside the source with `.optimized`
+        - `quality`: JPEG/WebP quality, default `85`
+        - `max_width` / `max_height`: optional resize limits; no resize is done unless provided
+        - `convert_to`: optional output format such as `webp`, `jpg`, or `png`
+        - `overwrite`: overwrite the source only when explicitly true
+        - `recursive`: recurse into directories
+        - `suffix`: filename suffix for non-overwrite output
+
+        Returns:
+        - output paths, original and optimized sizes, bytes saved, dimensions, format, and warnings
+
+        Examples:
+        - `optimize_images_for_memory(paths=["assets"], recursive=true, output_dir="optimized")`
+        - `optimize_images_for_memory(paths=["hero.png"], convert_to="webp", quality=88)`
+        """,
+    ),
     "read_binary_file": _doc(
         "读取二进制文件片段，并返回 base64 或 hex 编码。",
         """
