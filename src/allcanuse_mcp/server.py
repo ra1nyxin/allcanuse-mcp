@@ -91,7 +91,11 @@ def _tool_category(tool_name: str) -> str:
         "code": {
             "detect_c_toolchains",
             "compile_c_program",
+            "check_c_syntax",
+            "preprocess_c_source",
             "inspect_c_source",
+            "scan_c_memory_risks",
+            "generate_c_build_files",
             "format_c_code",
         },
         "seo": {

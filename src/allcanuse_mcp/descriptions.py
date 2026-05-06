@@ -244,6 +244,45 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `compile_c_program(source_files=["main.c"], output_path="build/app.exe", run_after_compile=true)`
         """,
     ),
+    "check_c_syntax": _doc(
+        "Check C source files for syntax errors without producing a normal binary.",
+        """
+        Inputs:
+        - `source_files`: C source files to validate
+        - `include_dirs`: optional include search paths
+        - `c_standard`: default `c11`
+        - `extra_args`: optional compiler flags
+        - `preferred_compiler`: optional first compiler to try
+
+        Behavior:
+        - Tries the preferred compiler first when provided
+        - Otherwise tries the same compiler order as `compile_c_program`
+        - Uses compiler syntax-check or parse-only modes instead of a full link step
+
+        Examples:
+        - `check_c_syntax(source_files=["main.c"])`
+        """,
+    ),
+    "preprocess_c_source": _doc(
+        "Expand a C source file through the compiler preprocessor.",
+        """
+        Inputs:
+        - `source_file`: a single C source file
+        - `include_dirs`: optional include search paths
+        - `defines`: optional macro definitions
+        - `undefines`: optional macros to undefine
+        - `c_standard`: default `c11`
+        - `preferred_compiler`: optional first compiler to try
+
+        Behavior:
+        - Tries the preferred compiler first when provided
+        - Otherwise tries the same compiler order as `compile_c_program`
+        - Returns preprocessed text and whether stdout was truncated
+
+        Examples:
+        - `preprocess_c_source(source_file="main.c")`
+        """,
+    ),
     "inspect_c_source": _doc(
         "Inspect C/C++ source files for includes, defines, and function declarations or definitions.",
         """
@@ -259,6 +298,44 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         Examples:
         - `inspect_c_source(paths=["src"])`
         - `inspect_c_source(paths=["main.c"], recursive=false)`
+        """,
+    ),
+    "scan_c_memory_risks": _doc(
+        "Scan C/C++ source files for risky memory and shell APIs.",
+        """
+        Inputs:
+        - `paths`: files or directories to scan
+        - `recursive`: recurse into directories
+        - `max_files`: maximum files to scan
+        - `max_results`: maximum findings to return
+
+        Behavior:
+        - Looks for classic high-risk APIs such as `gets`, `strcpy`, `sprintf`, and `system`
+        - Also reports lower-severity review items such as raw `malloc` and `realloc`
+
+        Examples:
+        - `scan_c_memory_risks(paths=["src"])`
+        """,
+    ),
+    "generate_c_build_files": _doc(
+        "Generate simple CMakeLists.txt and Makefile scaffolding for a C project.",
+        """
+        Inputs:
+        - `root`: project root directory
+        - `project_name`: CMake project name
+        - `executable_name`: output target name
+        - `source_files`: optional explicit source list
+        - `c_standard`: default `11`
+        - `overwrite`: replace existing build files only when true
+        - `include_cmake`: write `CMakeLists.txt`
+        - `include_makefile`: write `Makefile`
+
+        Behavior:
+        - Generates both build systems if requested
+        - Skips existing files unless overwrite is enabled
+
+        Examples:
+        - `generate_c_build_files(root=".", source_files=["main.c"])`
         """,
     ),
     "format_c_code": _doc(

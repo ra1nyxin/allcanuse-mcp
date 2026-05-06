@@ -46,15 +46,20 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("optimize_images_for_memory", names)
         self.assertIn("detect_c_toolchains", names)
         self.assertIn("compile_c_program", names)
+        self.assertIn("check_c_syntax", names)
+        self.assertIn("preprocess_c_source", names)
         self.assertIn("inspect_c_source", names)
+        self.assertIn("scan_c_memory_risks", names)
+        self.assertIn("generate_c_build_files", names)
         self.assertIn("format_c_code", names)
         categories = {item["name"]: item["category"] for item in result["tools"]}
         self.assertEqual(categories["scan_suspicious_files"], "security")
         self.assertEqual(categories["deploy_and_update_service"], "deployment")
         self.assertEqual(categories["extract_sqlite_content"], "database")
+        self.assertEqual(categories["compile_c_program"], "code")
         self.assertEqual(categories["audit_seo"], "seo")
         self.assertEqual(categories["optimize_images_for_memory"], "optimization")
-        self.assertEqual(categories["compile_c_program"], "code")
+        self.assertEqual(categories["scan_c_memory_risks"], "code")
 
     def test_quick_reference_resource_registered(self) -> None:
         server = create_server()
