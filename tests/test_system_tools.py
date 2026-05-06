@@ -65,6 +65,52 @@ class SystemToolTests(unittest.TestCase):
             result = system_tools._collect_network_adapters()
         self.assertEqual(result, expected)
 
+    def test_get_network_config_linux_returns_adapter_snapshot_when_commands_fail(self) -> None:
+        expected = {"count": 1, "adapters": [{"name": "eth0", "addresses": []}]}
+
+        def failed_shell(*_args, **_kwargs):
+            return {"ok": False, "returncode": 127, "stdout": "", "stderr": "missing command"}
+
+        with patch.object(system_tools.platform, "system", return_value="Linux"), patch.object(
+            system_tools,
+            "run_shell",
+            side_effect=failed_shell,
+        ), patch.object(
+            system_tools.linux_fallbacks,
+            "linux_procfs_available",
+            return_value=True,
+        ), patch.object(
+            system_tools.linux_fallbacks,
+            "list_network_adapters",
+            return_value=expected,
+        ):
+            result = system_tools._get_network_config(max_output_chars=4000, timeout_ms=1000)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["fallback_backend"], "procfs_snapshot")
+        self.assertEqual(result["network_adapters"], expected)
+        self.assertEqual([item["backend"] for item in result["attempts"]], ["ip", "ifconfig"])
+
+    def test_get_network_config_windows_falls_back_to_powershell(self) -> None:
+        with patch.object(system_tools.platform, "system", return_value="Windows"), patch.object(
+            system_tools,
+            "run_cmd",
+            return_value={"ok": False, "returncode": 1, "stdout": "", "stderr": "ipconfig failed"},
+        ), patch.object(
+            system_tools,
+            "run_powershell",
+            return_value={"ok": True, "returncode": 0, "stdout": "adapter", "stderr": ""},
+        ), patch.object(
+            system_tools,
+            "_collect_network_adapters",
+            return_value={"count": 0, "adapters": []},
+        ):
+            result = system_tools._get_network_config(max_output_chars=4000, timeout_ms=1000)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["command"], "Get-NetIPConfiguration | Get-NetRoute")
+        self.assertEqual([item["backend"] for item in result["attempts"]], ["ipconfig", "powershell"])
+
 
 if __name__ == "__main__":
     unittest.main()

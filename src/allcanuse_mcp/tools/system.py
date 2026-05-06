@@ -12,6 +12,7 @@ except ImportError:
 
 from allcanuse_mcp.core.command_runner import run_cmd
 from allcanuse_mcp.core.command_runner import run_shell
+from allcanuse_mcp.core.command_runner import run_powershell
 from allcanuse_mcp.core import linux_fallbacks
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 
@@ -144,6 +145,7 @@ def _collect_network_adapters() -> dict:
 
 def _get_network_config(*, max_output_chars: int, timeout_ms: int) -> dict:
     system = platform.system()
+    attempts: list[dict[str, object]] = []
     if system == "Windows":
         result = run_cmd(
             "ipconfig /all",
@@ -153,6 +155,23 @@ def _get_network_config(*, max_output_chars: int, timeout_ms: int) -> dict:
         )
         result["platform"] = "Windows"
         result["command"] = "ipconfig /all"
+        attempts.append({"backend": "ipconfig", "ok": result.get("ok", False), "returncode": result.get("returncode")})
+        if not result.get("ok"):
+            ps_result = run_powershell(
+                "Get-NetIPConfiguration | Format-List *; Write-Host '--- ROUTES ---'; Get-NetRoute -AddressFamily IPv4 | Format-Table -AutoSize",
+                max_output_chars=max_output_chars,
+                encoding="utf-8",
+                timeout_ms=timeout_ms,
+            )
+            ps_result["platform"] = "Windows"
+            ps_result["command"] = "Get-NetIPConfiguration | Get-NetRoute"
+            attempts.append(
+                {"backend": "powershell", "ok": ps_result.get("ok", False), "returncode": ps_result.get("returncode")}
+            )
+            if ps_result.get("ok"):
+                result = ps_result
+            else:
+                result = ps_result
     else:
         result = run_shell(
             "ip addr && printf '\\n--- ROUTES ---\\n' && ip route",
@@ -160,16 +179,37 @@ def _get_network_config(*, max_output_chars: int, timeout_ms: int) -> dict:
             encoding="utf-8",
             timeout_ms=timeout_ms,
         )
+        attempts.append({"backend": "ip", "ok": result.get("ok", False), "returncode": result.get("returncode")})
         if not result.get("ok"):
-            result = run_shell(
+            fallback = run_shell(
                 "ifconfig && printf '\\n--- ROUTES ---\\n' && route -n",
                 max_output_chars=max_output_chars,
                 encoding="utf-8",
                 timeout_ms=timeout_ms,
             )
-            result["command"] = "ifconfig && route -n"
+            fallback["command"] = "ifconfig && route -n"
+            fallback["platform"] = system
+            attempts.append({"backend": "ifconfig", "ok": fallback.get("ok", False), "returncode": fallback.get("returncode")})
+            if fallback.get("ok"):
+                result = fallback
+            else:
+                snapshot = linux_fallbacks.list_network_adapters() if linux_fallbacks.linux_procfs_available() else {"adapters": [], "count": 0}
+                result = {
+                    "ok": bool(snapshot.get("count")),
+                    "returncode": fallback.get("returncode"),
+                    "stdout": fallback.get("stdout", ""),
+                    "stderr": fallback.get("stderr", ""),
+                    "platform": system,
+                    "command": "ip addr && ip route" if result.get("ok") else "ifconfig && route -n",
+                    "fallback_backend": "procfs_snapshot",
+                    "network_adapters": snapshot,
+                    "attempts": attempts,
+                    "error": fallback.get("error") or "Network command failed, returned procfs snapshot instead.",
+                }
+                return result
         else:
             result["command"] = "ip addr && ip route"
         result["platform"] = system
     result["network_adapters"] = _collect_network_adapters()
+    result["attempts"] = attempts
     return result

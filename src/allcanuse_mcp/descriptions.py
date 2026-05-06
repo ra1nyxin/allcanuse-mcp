@@ -171,8 +171,9 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "获取当前主机的网络配置摘要。",
         """
         平台行为：
-        - Windows 下执行 `ipconfig /all`
-        - Linux 下优先执行 `ip addr` 和 `ip route`
+        - Windows 下优先执行 `ipconfig /all`，失败后再用 PowerShell `Get-NetIPConfiguration`
+        - Linux 下优先执行 `ip addr` 和 `ip route`，失败后再试 `ifconfig` / `route -n`
+        - 命令不可用时仍会尽量返回结构化 `network_adapters`
 
         输入：
         - `max_output_chars`: 限制返回文本长度，默认 `12000`
@@ -203,6 +204,321 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 
         调用示例：
         - `list_network_adapters()`
+        """,
+    ),
+    "detect_c_toolchains": _doc(
+        "Detect local C compilers, formatters, and build tools.",
+        """
+        Inputs:
+        - none
+
+        Behavior:
+        - Reports compiler availability in fallback order: `gcc`, `clang`, `cl`, `tcc`, `zig cc`
+        - Also reports common C formatters and build tools such as `clang-format`, `make`, `cmake`, and `ninja`
+
+        Examples:
+        - `detect_c_toolchains()`
+        """,
+    ),
+    "compile_c_program": _doc(
+        "Compile one or more C source files with practical compiler fallbacks.",
+        """
+        Inputs:
+        - `source_files`: C source files to compile
+        - `output_path`: optional output binary path
+        - `include_dirs`, `library_dirs`, `libraries`: optional include/library settings
+        - `c_standard`: default `c11`
+        - `extra_args`: optional compiler-specific flags
+        - `cwd`: optional working directory
+        - `preferred_compiler`: optional first compiler to try
+        - `run_after_compile`: when true, runs the output binary after a successful compile
+
+        Behavior:
+        - Tries the preferred compiler first when provided
+        - Otherwise tries `gcc`, then `clang`, then MSVC `cl`, then `tcc`, then `zig cc`
+        - A fallback compiler is used only when the previous compiler is missing or fails
+        - Returns `attempts` so the caller can see exactly which backend compiled or failed
+
+        Examples:
+        - `compile_c_program(source_files=["main.c"])`
+        - `compile_c_program(source_files=["main.c"], output_path="build/app.exe", run_after_compile=true)`
+        """,
+    ),
+    "check_c_syntax": _doc(
+        "Check C source files for syntax errors without producing a normal binary.",
+        """
+        Inputs:
+        - `source_files`: C source files to validate
+        - `include_dirs`: optional include search paths
+        - `c_standard`: default `c11`
+        - `extra_args`: optional compiler flags
+        - `preferred_compiler`: optional first compiler to try
+
+        Behavior:
+        - Tries the preferred compiler first when provided
+        - Otherwise tries the same compiler order as `compile_c_program`
+        - Uses compiler syntax-check or parse-only modes instead of a full link step
+
+        Examples:
+        - `check_c_syntax(source_files=["main.c"])`
+        """,
+    ),
+    "preprocess_c_source": _doc(
+        "Expand a C source file through the compiler preprocessor.",
+        """
+        Inputs:
+        - `source_file`: a single C source file
+        - `include_dirs`: optional include search paths
+        - `defines`: optional macro definitions
+        - `undefines`: optional macros to undefine
+        - `c_standard`: default `c11`
+        - `preferred_compiler`: optional first compiler to try
+
+        Behavior:
+        - Tries the preferred compiler first when provided
+        - Otherwise tries the same compiler order as `compile_c_program`
+        - Returns preprocessed text and whether stdout was truncated
+
+        Examples:
+        - `preprocess_c_source(source_file="main.c")`
+        """,
+    ),
+    "inspect_c_source": _doc(
+        "Inspect C/C++ source files for includes, defines, and function declarations or definitions.",
+        """
+        Inputs:
+        - `paths`: files or directories to inspect
+        - `recursive`: recurse into directories, default `true`
+        - `max_files`: maximum files to inspect
+
+        Behavior:
+        - Parses common C/C++ file extensions without invoking a compiler
+        - Returns includes, macro definitions, function signatures, per-file line counts, and totals
+
+        Examples:
+        - `inspect_c_source(paths=["src"])`
+        - `inspect_c_source(paths=["main.c"], recursive=false)`
+        """,
+    ),
+    "scan_c_memory_risks": _doc(
+        "Scan C/C++ source files for risky memory and shell APIs.",
+        """
+        Inputs:
+        - `paths`: files or directories to scan
+        - `recursive`: recurse into directories
+        - `max_files`: maximum files to scan
+        - `max_results`: maximum findings to return
+
+        Behavior:
+        - Looks for classic high-risk APIs such as `gets`, `strcpy`, `sprintf`, and `system`
+        - Also reports lower-severity review items such as raw `malloc` and `realloc`
+
+        Examples:
+        - `scan_c_memory_risks(paths=["src"])`
+        """,
+    ),
+    "scan_c_numeric_risks": _doc(
+        "Scan C/C++ source files for common numeric and math pitfalls.",
+        """
+        Inputs:
+        - `paths`: files or directories to scan
+        - `recursive`: recurse into directories
+        - `max_files`: maximum files to scan
+        - `max_results`: maximum findings to return
+
+        Behavior:
+        - Reports integer division assigned to floating-point variables
+        - Reports direct floating-point equality, non-portable `M_PI`, suspicious `abs`, and `pow(x, 2)`
+        - Adds low-severity hints when math functions may need `<math.h>` and libm linkage
+
+        Examples:
+        - `scan_c_numeric_risks(paths=["src"])`
+        """,
+    ),
+    "evaluate_c_math_expression": _doc(
+        "Compile and run a temporary C program to evaluate a math expression.",
+        """
+        Inputs:
+        - `expression`: C expression evaluated as `double`
+        - `variables`: optional mapping of C identifier names to numeric values
+        - `c_standard`: default `c11`
+        - `preferred_compiler`: optional first compiler to try
+
+        Behavior:
+        - Includes `<math.h>` and prints the result with `%.17g`
+        - Tries libm linkage first, then falls back to default linkage
+        - Reuses the compiler fallback chain from `compile_c_program`
+
+        Examples:
+        - `evaluate_c_math_expression(expression="sin(x) * sin(x) + cos(x) * cos(x)", variables={"x": 0.7})`
+        """,
+    ),
+    "generate_c_numeric_test_harness": _doc(
+        "Generate a small C test harness for numeric functions using tolerance checks.",
+        """
+        Inputs:
+        - `path`: output C test file
+        - `function_name`: numeric function to call
+        - `cases`: list of objects with `args` and `expected`
+        - `include_path`: optional header to include
+        - `tolerance`: absolute tolerance for `fabs(actual - expected)`
+        - `overwrite`: replace an existing file only when true
+
+        Examples:
+        - `generate_c_numeric_test_harness(path="test_math.c", function_name="hypot2", cases=[{"args":[3,4],"expected":5}], include_path="mathlib.h")`
+        """,
+    ),
+    "generate_c_math_utils_header": _doc(
+        "Generate a small C header with common inline math helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated helpers
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - clamp, lerp, nearly_equal, deg_to_rad, rad_to_deg
+
+        Examples:
+        - `generate_c_math_utils_header(path="include/acu_math_utils.h", prefix="acu")`
+        """,
+    ),
+    "generate_c_vector_math_header": _doc(
+        "Generate a C header with inline 2D and 3D vector math helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated structs and functions
+        - `dimensions`: optional list containing `2`, `3`, or both
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - vec2/vec3 make, add, subtract, scale, dot, length, normalize
+        - vec3 cross product when dimension 3 is enabled
+
+        Examples:
+        - `generate_c_vector_math_header(path="include/acu_vector_math.h", prefix="acu", dimensions=[2,3])`
+        """,
+    ),
+    "generate_c_lookup_table_header": _doc(
+        "Generate a C header containing a static math lookup table.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `table_name`: C identifier for the generated array and macros
+        - `function`: supported math function such as `sin`, `cos`, `sqrt`, `log`, or `tanh`
+        - `start`: first x value
+        - `end`: final x value
+        - `samples`: number of table entries
+        - `value_type`: `double` or `float`
+        - `overwrite`: replace an existing file only when true
+
+        Examples:
+        - `generate_c_lookup_table_header(path="include/sin_lut.h", table_name="sin_lut", function="sin", start=0, end=6.283185307179586, samples=256)`
+        """,
+    ),
+    "generate_c_polynomial_eval_header": _doc(
+        "Generate a C header for Horner-form polynomial evaluation.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `function_name`: C function name to generate
+        - `coefficients`: polynomial coefficients
+        - `coefficient_order`: `ascending` for c0,c1,c2 or `descending` for highest degree first
+        - `variable_name`: generated function argument name
+        - `overwrite`: replace an existing file only when true
+
+        Examples:
+        - `generate_c_polynomial_eval_header(path="include/poly.h", function_name="poly_eval", coefficients=[1,2,3])`
+        """,
+    ),
+    "generate_c_matrix_math_header": _doc(
+        "Generate a C header with inline 2D and 3D matrix helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated structs and functions
+        - `dimensions`: optional list containing `2`, `3`, or both
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - mat2 and mat3 identity, add, multiply, and determinant
+
+        Examples:
+        - `generate_c_matrix_math_header(path="include/acu_matrix_math.h", prefix="acu", dimensions=[2,3])`
+        """,
+    ),
+    "generate_c_statistics_header": _doc(
+        "Generate a C header with basic statistics helpers for numeric arrays.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated helpers
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - sum, mean, variance, rms, dot, min, max
+
+        Examples:
+        - `generate_c_statistics_header(path="include/acu_stats.h", prefix="acu")`
+        """,
+    ),
+    "generate_c_fixed_point_header": _doc(
+        "Generate a C header with basic fixed-point Q-format helpers.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated helpers
+        - `fraction_bits`: number of fractional bits in the Q format
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - conversion from/to double and int
+        - add, subtract, multiply, divide
+
+        Examples:
+        - `generate_c_fixed_point_header(path="include/acu_q.h", prefix="acu", fraction_bits=16)`
+        """,
+    ),
+    "generate_c_build_files": _doc(
+        "Generate simple CMakeLists.txt and Makefile scaffolding for a C project.",
+        """
+        Inputs:
+        - `root`: project root directory
+        - `project_name`: CMake project name
+        - `executable_name`: output target name
+        - `source_files`: optional explicit source list
+        - `c_standard`: default `11`
+        - `overwrite`: replace existing build files only when true
+        - `include_cmake`: write `CMakeLists.txt`
+        - `include_makefile`: write `Makefile`
+
+        Behavior:
+        - Generates both build systems if requested
+        - Skips existing files unless overwrite is enabled
+
+        Examples:
+        - `generate_c_build_files(root=".", source_files=["main.c"])`
+        """,
+    ),
+    "format_c_code": _doc(
+        "Format or clean up C/C++ source files.",
+        """
+        Inputs:
+        - `paths`: files or directories to format
+        - `in_place`: write changes back to disk when true; otherwise returns formatted text
+        - `style`: clang-format style, default `file`
+        - `recursive`: recurse into directories
+        - `max_files`: maximum files to process
+
+        Behavior:
+        - Uses `clang-format` first
+        - If `clang-format` is missing or fails for a file, falls back to conservative whitespace cleanup only
+        - Fallback cleanup strips trailing whitespace and ensures one final newline; it does not rewrite C syntax
+
+        Examples:
+        - `format_c_code(paths=["main.c"], in_place=true)`
+        - `format_c_code(paths=["src"], recursive=true, style="LLVM")`
         """,
     ),
     "wait": _doc(
