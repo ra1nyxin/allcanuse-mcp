@@ -27,6 +27,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     10. 如果任务是长时间实验、长时间训练、长时间推理、长时间服务、可能持续几小时到几天的后台程序，不要只把它当普通临时进程启动。优先使用长时进程工具登记并保护它，后续只监视、记录、汇报；除非用户明确要求停止，否则不要主动结束这类进程。
     11. 当前仓库里还可能包含可直接调用的本地二进制工具。例如 Windows 下可以直接调用 `src\\allcanuse_mcp\\tools\\micrecording.exe` 录制麦克风音频；这个工具无参数运行时会输出完整使用示例，先看帮助再带参数调用通常更稳妥。
     12. Windows 下还可以直接调用 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe` 执行键盘模拟输入，用来让模型像用户手打键盘一样把文本逐字发送到当前聚焦窗口。遇到需要在桌面程序、终端、输入框、聊天框、安装器里真实键入文本的场景时，应主动考虑它；通常先把目标窗口切到前台，再调用这个二进制工具更稳妥。
+    13. 当前仓库里也内置了用于公开用户名/社交足迹审计的本地二进制工具，例如 `src\\allcanuse_mcp\\tools\\maigret_standalone.exe`。它的目标是根据用户名或公开标识符收集公开账号线索、站点命中和报告结果；遇到这类授权范围内的社交网络审计任务时，应优先考虑它，而不是要求目标设备额外安装 Python 依赖。
 
     推荐组合方式：
     - 代码任务：`list_tree/find_files` -> `search_text/read_file` -> `patch_lines/replace_text/write_file` -> `run_shell` 验证
@@ -38,6 +39,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     - 值班任务：`create_background_task` -> `create_task_plan` -> `append_task_event/record_task_artifact` -> `wait_for_window/wait_for_desktop_change` -> `get_background_task/list_background_tasks` -> `summarize_background_task/get_task_handoff`
     - 音频录制任务：先用 `run_shell` 或 `run_cmd` 无参数执行 `src\\allcanuse_mcp\\tools\\micrecording.exe` 查看示例 -> 再带 `-t`、`-o` 参数正式录音 -> 再读取、上传或分析输出的 `.wav`
     - 键盘输入任务：先用 `get_active_window` 或 `list_windows` 确认目标窗口 -> 必要时让目标窗口切到前台 -> 再用 `run_shell` 或 `run_cmd` 调用 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe` 模拟逐字键入
+    - 社交网络/公开账号审计任务：先用 `src\\allcanuse_mcp\\tools\\maigret_standalone.exe` 对用户名或公开标识进行调查 -> 再把命中站点、报告和证据链接整理出来
 
     值班模式判断规则：
     - 如果只是几秒到几十秒的短暂停顿，并且你会在当前回复里继续处理，优先用 `wait` 或 `wait_until`，不要急着托管后台任务。

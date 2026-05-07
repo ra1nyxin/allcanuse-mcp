@@ -376,6 +376,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "如果任务会启动一个长时间运行的实验、训练、推理或后台服务，优先用 `start_managed_process` 而不是普通 `start_process`，并配合 `get_managed_process`、`list_managed_processes`、`note_managed_process`、`wait_for_process` 或 `create_background_task` 长期监视；未经用户明确要求，不要主动结束这类进程。"
                     "如果任务需要麦克风录音，可直接用 `run_shell` 或 `run_cmd` 调用 `src\\allcanuse_mcp\\tools\\micrecording.exe`；先无参数看示例，再正式带 `-t`、`-o` 参数执行。"
                     "如果任务需要模拟用户键盘输入文本，可直接用 `run_shell` 或 `run_cmd` 调用 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe`；先确认目标窗口是否正确聚焦，再让它逐字输入。"
+                    "如果任务是基于用户名或公开标识的社交网络/公开账号审计，仓库里已有本地二进制 `src\\allcanuse_mcp\\tools\\maigret_standalone.exe` 可直接调用；它面向公开信息收集与报告整理，不需要在目标设备上额外 pip install。"
                     "如果工具已经足够，不要额外安装同类依赖；只有在工具明确提示缺依赖且当前任务确实需要时，才安装最小必需依赖。"
                     f"当前任务：{task}"
                 ),
