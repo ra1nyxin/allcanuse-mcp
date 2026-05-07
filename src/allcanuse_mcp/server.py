@@ -340,6 +340,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "如果用户一句话要求你自己做一小时左右的事情，默认先创建后台任务，再补任务计划、事件和产物记录，不要同步空等一小时。"
                     "如果任务是长时间训练、长时间推理、长时间实验或需要持续跑几个小时到几天的进程，不要只用普通 `start_process`；优先用 `start_managed_process` 把它登记成受监视、受保护的长时进程，后续只监视、记录和汇报，除非用户明确要求停止，否则不要主动 `kill_process`。"
                     "如果任务涉及麦克风录音，当前仓库里可直接调用本地二进制 `src\\allcanuse_mcp\\tools\\micrecording.exe`；它无参数运行时会先输出完整使用示例，不会直接开始录音。模型应先看帮助，再带 `-t` 和可选 `-o` 参数正式调用。"
+                    "如果任务涉及桌面程序里的真实文本输入，当前仓库里可直接调用本地二进制 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe` 来模拟用户手打键盘。通常先确认或切换目标窗口到前台，再执行这个工具更稳妥。"
                     "优先使用结构化工具，而不是把所有事情都交给 shell。"
                     "如果当前任务依赖缺失，并且工具或命令已经明确提示缺少什么，"
                     "你可以先安装最小必需依赖后继续。"
@@ -374,6 +375,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
                     "如果用户说的是“自己做一个小时”“帮我盯一小时”“到点再汇报”，直接按后台值班流程处理：先 `create_background_task`，再 `create_task_plan`，再 `append_task_event`，有产物就 `record_task_artifact`，到点后 `summarize_background_task` 或 `get_task_handoff`。"
                     "如果任务会启动一个长时间运行的实验、训练、推理或后台服务，优先用 `start_managed_process` 而不是普通 `start_process`，并配合 `get_managed_process`、`list_managed_processes`、`note_managed_process`、`wait_for_process` 或 `create_background_task` 长期监视；未经用户明确要求，不要主动结束这类进程。"
                     "如果任务需要麦克风录音，可直接用 `run_shell` 或 `run_cmd` 调用 `src\\allcanuse_mcp\\tools\\micrecording.exe`；先无参数看示例，再正式带 `-t`、`-o` 参数执行。"
+                    "如果任务需要模拟用户键盘输入文本，可直接用 `run_shell` 或 `run_cmd` 调用 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe`；先确认目标窗口是否正确聚焦，再让它逐字输入。"
                     "如果工具已经足够，不要额外安装同类依赖；只有在工具明确提示缺依赖且当前任务确实需要时，才安装最小必需依赖。"
                     f"当前任务：{task}"
                 ),

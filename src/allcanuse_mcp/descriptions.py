@@ -26,6 +26,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     9. 不要因为担心多调用工具而放弃获取必要上下文。只要工具与当前任务直接相关，就应该使用。
     10. 如果任务是长时间实验、长时间训练、长时间推理、长时间服务、可能持续几小时到几天的后台程序，不要只把它当普通临时进程启动。优先使用长时进程工具登记并保护它，后续只监视、记录、汇报；除非用户明确要求停止，否则不要主动结束这类进程。
     11. 当前仓库里还可能包含可直接调用的本地二进制工具。例如 Windows 下可以直接调用 `src\\allcanuse_mcp\\tools\\micrecording.exe` 录制麦克风音频；这个工具无参数运行时会输出完整使用示例，先看帮助再带参数调用通常更稳妥。
+    12. Windows 下还可以直接调用 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe` 执行键盘模拟输入，用来让模型像用户手打键盘一样把文本逐字发送到当前聚焦窗口。遇到需要在桌面程序、终端、输入框、聊天框、安装器里真实键入文本的场景时，应主动考虑它；通常先把目标窗口切到前台，再调用这个二进制工具更稳妥。
 
     推荐组合方式：
     - 代码任务：`list_tree/find_files` -> `search_text/read_file` -> `patch_lines/replace_text/write_file` -> `run_shell` 验证
@@ -36,6 +37,7 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     - 长时实验任务：`start_managed_process` -> `get_managed_process/list_managed_processes` -> `wait_for_process` 或 `create_background_task` -> `note_managed_process` -> 只有用户明确要求时才 `stop_managed_process`
     - 值班任务：`create_background_task` -> `create_task_plan` -> `append_task_event/record_task_artifact` -> `wait_for_window/wait_for_desktop_change` -> `get_background_task/list_background_tasks` -> `summarize_background_task/get_task_handoff`
     - 音频录制任务：先用 `run_shell` 或 `run_cmd` 无参数执行 `src\\allcanuse_mcp\\tools\\micrecording.exe` 查看示例 -> 再带 `-t`、`-o` 参数正式录音 -> 再读取、上传或分析输出的 `.wav`
+    - 键盘输入任务：先用 `get_active_window` 或 `list_windows` 确认目标窗口 -> 必要时让目标窗口切到前台 -> 再用 `run_shell` 或 `run_cmd` 调用 `src\\allcanuse_mcp\\tools\\keyboardargstextinput.exe` 模拟逐字键入
 
     值班模式判断规则：
     - 如果只是几秒到几十秒的短暂停顿，并且你会在当前回复里继续处理，优先用 `wait` 或 `wait_until`，不要急着托管后台任务。
