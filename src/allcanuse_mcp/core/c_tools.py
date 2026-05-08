@@ -618,6 +618,35 @@ def generate_c_fixed_point_header(path: str, *, prefix: str = "acu", fraction_bi
     return {"ok": True, "path": str(target), "prefix": prefix, "fraction_bits": fraction_bits, "bytes": len(text.encode("utf-8"))}
 
 
+def generate_c_matrix_algorithms_header(
+    path: str,
+    *,
+    prefix: str = "acu",
+    dimensions: list[int] | None = None,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    if not re.fullmatch(r"[A-Za-z_]\w*", prefix):
+        return {"ok": False, "error": "prefix must be a valid C identifier prefix."}
+    requested = dimensions or [2, 3]
+    invalid = [item for item in requested if item not in {2, 3}]
+    if invalid:
+        return {"ok": False, "error": "dimensions may only contain 2 and 3.", "invalid_dimensions": invalid}
+    target = Path(path).expanduser().resolve()
+    if target.exists() and not overwrite:
+        return {"ok": False, "error": f"File already exists: {target}", "path": str(target)}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    normalized_dimensions = sorted(set(requested))
+    text = _render_matrix_algorithms_header(prefix, normalized_dimensions)
+    target.write_text(text, encoding="utf-8")
+    return {
+        "ok": True,
+        "path": str(target),
+        "prefix": prefix,
+        "dimensions": normalized_dimensions,
+        "bytes": len(text.encode("utf-8")),
+    }
+
+
 def generate_c_build_files(
     root: str,
     *,
@@ -1273,6 +1302,176 @@ def _render_matrix_math_header(prefix: str, dimensions: list[int]) -> str:
     return (
         f"#ifndef {guard}\n"
         f"#define {guard}\n\n"
+        f"{body}\n\n"
+        f"#endif /* {guard} */\n"
+    )
+
+
+def _render_matrix_algorithms_header(prefix: str, dimensions: list[int]) -> str:
+    guard = f"{prefix.upper()}_MATRIX_ALGORITHMS_H"
+    sections = []
+    if 2 in dimensions:
+        type_name = f"{prefix}_alg_mat2"
+        func = f"{prefix}_alg_mat2"
+        sections.append(
+            f"typedef struct {type_name} {{ double m[4]; }} {type_name};\n\n"
+            f"static inline {type_name} {func}_make(double m00, double m01, double m10, double m11) {{\n"
+            f"    {type_name} value = {{{{m00, m01, m10, m11}}}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_identity(void) {{\n"
+            f"    return {func}_make(1.0, 0.0, 0.0, 1.0);\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_add({type_name} a, {type_name} b) {{\n"
+            f"    return {func}_make(a.m[0] + b.m[0], a.m[1] + b.m[1], a.m[2] + b.m[2], a.m[3] + b.m[3]);\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_sub({type_name} a, {type_name} b) {{\n"
+            f"    return {func}_make(a.m[0] - b.m[0], a.m[1] - b.m[1], a.m[2] - b.m[2], a.m[3] - b.m[3]);\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_scale({type_name} value, double scalar) {{\n"
+            f"    return {func}_make(value.m[0] * scalar, value.m[1] * scalar, value.m[2] * scalar, value.m[3] * scalar);\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_transpose({type_name} value) {{\n"
+            f"    return {func}_make(value.m[0], value.m[2], value.m[1], value.m[3]);\n"
+            "}\n\n"
+            f"static inline double {func}_trace({type_name} value) {{\n"
+            "    return value.m[0] + value.m[3];\n"
+            "}\n\n"
+            f"static inline double {func}_det({type_name} value) {{\n"
+            "    return value.m[0] * value.m[3] - value.m[1] * value.m[2];\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_mul({type_name} a, {type_name} b) {{\n"
+            f"    return {func}_make(\n"
+            "        a.m[0] * b.m[0] + a.m[1] * b.m[2],\n"
+            "        a.m[0] * b.m[1] + a.m[1] * b.m[3],\n"
+            "        a.m[2] * b.m[0] + a.m[3] * b.m[2],\n"
+            "        a.m[2] * b.m[1] + a.m[3] * b.m[3]\n"
+            "    );\n"
+            "}\n\n"
+            f"static inline void {func}_mul_vec({type_name} value, const double input[2], double output[2]) {{\n"
+            "    output[0] = value.m[0] * input[0] + value.m[1] * input[1];\n"
+            "    output[1] = value.m[2] * input[0] + value.m[3] * input[1];\n"
+            "}\n\n"
+            f"static inline int {func}_inverse({type_name} value, {type_name} *output) {{\n"
+            f"    const double det = {func}_det(value);\n"
+            "    if (fabs(det) < 1e-12) {\n"
+            "        return 0;\n"
+            "    }\n"
+            "    const double inv_det = 1.0 / det;\n"
+            f"    *output = {func}_make(value.m[3] * inv_det, -value.m[1] * inv_det, -value.m[2] * inv_det, value.m[0] * inv_det);\n"
+            "    return 1;\n"
+            "}\n\n"
+            f"static inline int {func}_solve({type_name} value, const double rhs[2], double output[2]) {{\n"
+            f"    {type_name} inverse;\n"
+            f"    if (!{func}_inverse(value, &inverse)) {{\n"
+            "        return 0;\n"
+            "    }\n"
+            "    output[0] = inverse.m[0] * rhs[0] + inverse.m[1] * rhs[1];\n"
+            "    output[1] = inverse.m[2] * rhs[0] + inverse.m[3] * rhs[1];\n"
+            "    return 1;\n"
+            "}\n"
+        )
+    if 3 in dimensions:
+        type_name = f"{prefix}_alg_mat3"
+        func = f"{prefix}_alg_mat3"
+        sections.append(
+            f"typedef struct {type_name} {{ double m[9]; }} {type_name};\n\n"
+            f"static inline {type_name} {func}_make(double m00, double m01, double m02, double m10, double m11, double m12, double m20, double m21, double m22) {{\n"
+            f"    {type_name} value = {{{{m00, m01, m02, m10, m11, m12, m20, m21, m22}}}};\n"
+            "    return value;\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_identity(void) {{\n"
+            f"    return {func}_make(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_add({type_name} a, {type_name} b) {{\n"
+            f"    return {func}_make(\n"
+            "        a.m[0] + b.m[0], a.m[1] + b.m[1], a.m[2] + b.m[2],\n"
+            "        a.m[3] + b.m[3], a.m[4] + b.m[4], a.m[5] + b.m[5],\n"
+            "        a.m[6] + b.m[6], a.m[7] + b.m[7], a.m[8] + b.m[8]\n"
+            "    );\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_sub({type_name} a, {type_name} b) {{\n"
+            f"    return {func}_make(\n"
+            "        a.m[0] - b.m[0], a.m[1] - b.m[1], a.m[2] - b.m[2],\n"
+            "        a.m[3] - b.m[3], a.m[4] - b.m[4], a.m[5] - b.m[5],\n"
+            "        a.m[6] - b.m[6], a.m[7] - b.m[7], a.m[8] - b.m[8]\n"
+            "    );\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_scale({type_name} value, double scalar) {{\n"
+            f"    return {func}_make(\n"
+            "        value.m[0] * scalar, value.m[1] * scalar, value.m[2] * scalar,\n"
+            "        value.m[3] * scalar, value.m[4] * scalar, value.m[5] * scalar,\n"
+            "        value.m[6] * scalar, value.m[7] * scalar, value.m[8] * scalar\n"
+            "    );\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_transpose({type_name} value) {{\n"
+            f"    return {func}_make(\n"
+            "        value.m[0], value.m[3], value.m[6],\n"
+            "        value.m[1], value.m[4], value.m[7],\n"
+            "        value.m[2], value.m[5], value.m[8]\n"
+            "    );\n"
+            "}\n\n"
+            f"static inline double {func}_trace({type_name} value) {{\n"
+            "    return value.m[0] + value.m[4] + value.m[8];\n"
+            "}\n\n"
+            f"static inline double {func}_det({type_name} value) {{\n"
+            "    return value.m[0] * (value.m[4] * value.m[8] - value.m[5] * value.m[7])\n"
+            "        - value.m[1] * (value.m[3] * value.m[8] - value.m[5] * value.m[6])\n"
+            "        + value.m[2] * (value.m[3] * value.m[7] - value.m[4] * value.m[6]);\n"
+            "}\n\n"
+            f"static inline {type_name} {func}_mul({type_name} a, {type_name} b) {{\n"
+            f"    return {func}_make(\n"
+            "        a.m[0] * b.m[0] + a.m[1] * b.m[3] + a.m[2] * b.m[6],\n"
+            "        a.m[0] * b.m[1] + a.m[1] * b.m[4] + a.m[2] * b.m[7],\n"
+            "        a.m[0] * b.m[2] + a.m[1] * b.m[5] + a.m[2] * b.m[8],\n"
+            "        a.m[3] * b.m[0] + a.m[4] * b.m[3] + a.m[5] * b.m[6],\n"
+            "        a.m[3] * b.m[1] + a.m[4] * b.m[4] + a.m[5] * b.m[7],\n"
+            "        a.m[3] * b.m[2] + a.m[4] * b.m[5] + a.m[5] * b.m[8],\n"
+            "        a.m[6] * b.m[0] + a.m[7] * b.m[3] + a.m[8] * b.m[6],\n"
+            "        a.m[6] * b.m[1] + a.m[7] * b.m[4] + a.m[8] * b.m[7],\n"
+            "        a.m[6] * b.m[2] + a.m[7] * b.m[5] + a.m[8] * b.m[8]\n"
+            "    );\n"
+            "}\n\n"
+            f"static inline void {func}_mul_vec({type_name} value, const double input[3], double output[3]) {{\n"
+            "    output[0] = value.m[0] * input[0] + value.m[1] * input[1] + value.m[2] * input[2];\n"
+            "    output[1] = value.m[3] * input[0] + value.m[4] * input[1] + value.m[5] * input[2];\n"
+            "    output[2] = value.m[6] * input[0] + value.m[7] * input[1] + value.m[8] * input[2];\n"
+            "}\n\n"
+            f"static inline int {func}_inverse({type_name} value, {type_name} *output) {{\n"
+            f"    const double det = {func}_det(value);\n"
+            "    if (fabs(det) < 1e-12) {\n"
+            "        return 0;\n"
+            "    }\n"
+            "    const double inv_det = 1.0 / det;\n"
+            f"    *output = {func}_make(\n"
+            "        (value.m[4] * value.m[8] - value.m[5] * value.m[7]) * inv_det,\n"
+            "        (value.m[2] * value.m[7] - value.m[1] * value.m[8]) * inv_det,\n"
+            "        (value.m[1] * value.m[5] - value.m[2] * value.m[4]) * inv_det,\n"
+            "        (value.m[5] * value.m[6] - value.m[3] * value.m[8]) * inv_det,\n"
+            "        (value.m[0] * value.m[8] - value.m[2] * value.m[6]) * inv_det,\n"
+            "        (value.m[2] * value.m[3] - value.m[0] * value.m[5]) * inv_det,\n"
+            "        (value.m[3] * value.m[7] - value.m[4] * value.m[6]) * inv_det,\n"
+            "        (value.m[1] * value.m[6] - value.m[0] * value.m[7]) * inv_det,\n"
+            "        (value.m[0] * value.m[4] - value.m[1] * value.m[3]) * inv_det\n"
+            "    );\n"
+            "    return 1;\n"
+            "}\n\n"
+            f"static inline int {func}_solve({type_name} value, const double rhs[3], double output[3]) {{\n"
+            f"    {type_name} inverse;\n"
+            f"    if (!{func}_inverse(value, &inverse)) {{\n"
+            "        return 0;\n"
+            "    }\n"
+            "    output[0] = inverse.m[0] * rhs[0] + inverse.m[1] * rhs[1] + inverse.m[2] * rhs[2];\n"
+            "    output[1] = inverse.m[3] * rhs[0] + inverse.m[4] * rhs[1] + inverse.m[5] * rhs[2];\n"
+            "    output[2] = inverse.m[6] * rhs[0] + inverse.m[7] * rhs[1] + inverse.m[8] * rhs[2];\n"
+            "    return 1;\n"
+            "}\n"
+        )
+    body = "\n\n".join(sections)
+    return (
+        f"#ifndef {guard}\n"
+        f"#define {guard}\n\n"
+        "#include <math.h>\n\n"
         f"{body}\n\n"
         f"#endif /* {guard} */\n"
     )

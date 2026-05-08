@@ -452,6 +452,25 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         - `generate_c_matrix_math_header(path="include/acu_matrix_math.h", prefix="acu", dimensions=[2,3])`
         """,
     ),
+    "generate_c_matrix_algorithms_header": _doc(
+        "Generate a C header with higher-level 2D and 3D matrix algorithms.",
+        """
+        Inputs:
+        - `path`: output header path
+        - `prefix`: C identifier prefix for generated structs and functions
+        - `dimensions`: optional list containing `2`, `3`, or both
+        - `overwrite`: replace an existing file only when true
+
+        Generated helpers:
+        - add, subtract, scale, transpose, trace, multiply, determinant, inverse, solve, and vector transform
+
+        Notes:
+        - Uses its own `alg`-prefixed matrix types so it can coexist with the basic matrix header
+
+        Examples:
+        - `generate_c_matrix_algorithms_header(path="include/acu_matrix_algorithms.h", prefix="acu", dimensions=[2,3])`
+        """,
+    ),
     "generate_c_statistics_header": _doc(
         "Generate a C header with basic statistics helpers for numeric arrays.",
         """
@@ -482,6 +501,56 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
 
         Examples:
         - `generate_c_fixed_point_header(path="include/acu_q.h", prefix="acu", fraction_bits=16)`
+        """,
+    ),
+    "list_installed_microsoft_software": _doc(
+        "List Microsoft software installed on the local Windows machine.",
+        """
+        Inputs:
+        - `max_results`: maximum entries to return
+
+        Behavior:
+        - Reads Windows uninstall registry keys
+        - Keeps entries that look like Microsoft products or Microsoft-published software
+        """,
+    ),
+    "inspect_excel_workbook": _doc(
+        "Inspect an Excel workbook without opening Excel.",
+        """
+        Inputs:
+        - `path`: workbook path, usually `.xlsx` or `.xlsm`
+        - `max_sheets`: maximum sheets to inspect
+        - `max_rows`: maximum rows per sheet to sample
+        - `max_cells`: maximum cells per sampled row
+
+        Behavior:
+        - Reads workbook XML directly from the Open XML package
+        - Returns sheet names, dimensions, sample rows, and core properties
+        """,
+    ),
+    "inspect_word_document": _doc(
+        "Inspect a Word document without opening Word.",
+        """
+        Inputs:
+        - `path`: document path, usually `.docx`
+        - `max_paragraphs`: maximum paragraphs to return
+        - `max_tables`: reserved for future table sampling
+
+        Behavior:
+        - Reads document XML directly from the Open XML package
+        - Returns paragraph samples, table count, and core properties
+        """,
+    ),
+    "inspect_powerpoint_presentation": _doc(
+        "Inspect a PowerPoint presentation without opening PowerPoint.",
+        """
+        Inputs:
+        - `path`: presentation path, usually `.pptx`
+        - `max_slides`: maximum slides to inspect
+
+        Behavior:
+        - Reads slide XML directly from the Open XML package
+        - Returns slide text snippets and core properties
         """,
     ),
     "generate_c_build_files": _doc(

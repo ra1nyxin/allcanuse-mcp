@@ -20,6 +20,7 @@ from allcanuse_mcp.tools import code as code_tools
 from allcanuse_mcp.tools import duty as duty_tools
 from allcanuse_mcp.tools import exec as exec_tools
 from allcanuse_mcp.tools import files as file_tools
+from allcanuse_mcp.tools import microsoft as microsoft_tools
 from allcanuse_mcp.tools import network as network_tools
 from allcanuse_mcp.tools import optimization as optimization_tools
 from allcanuse_mcp.tools import system as system_tools
@@ -103,10 +104,17 @@ def _tool_category(tool_name: str) -> str:
             "generate_c_lookup_table_header",
             "generate_c_polynomial_eval_header",
             "generate_c_matrix_math_header",
+            "generate_c_matrix_algorithms_header",
             "generate_c_statistics_header",
             "generate_c_fixed_point_header",
             "generate_c_build_files",
             "format_c_code",
+        },
+        "microsoft": {
+            "list_installed_microsoft_software",
+            "inspect_excel_workbook",
+            "inspect_word_document",
+            "inspect_powerpoint_presentation",
         },
         "seo": {
             "audit_seo",
@@ -205,6 +213,7 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     exec_tools.register(mcp)
     file_tools.register(mcp)
     code_tools.register(mcp)
+    microsoft_tools.register(mcp)
     device_tools.register(mcp)
     duty_tools.register(mcp)
     window_tools.register(mcp)

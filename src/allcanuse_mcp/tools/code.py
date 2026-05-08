@@ -8,6 +8,7 @@ from allcanuse_mcp.core.c_tools import generate_c_build_files as generate_c_buil
 from allcanuse_mcp.core.c_tools import generate_c_fixed_point_header as generate_c_fixed_point_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_lookup_table_header as generate_c_lookup_table_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_matrix_math_header as generate_c_matrix_math_header_impl
+from allcanuse_mcp.core.c_tools import generate_c_matrix_algorithms_header as generate_c_matrix_algorithms_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_math_utils_header as generate_c_math_utils_header_impl
 from allcanuse_mcp.core.c_tools import generate_c_numeric_test_harness as generate_c_numeric_test_harness_impl
 from allcanuse_mcp.core.c_tools import generate_c_polynomial_eval_header as generate_c_polynomial_eval_header_impl
@@ -197,6 +198,10 @@ def register(mcp) -> None:
     @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_matrix_math_header"])
     def generate_c_matrix_math_header(path: str, prefix: str = "acu", dimensions: list[int] | None = None, overwrite: bool = False) -> dict:
         return generate_c_matrix_math_header_impl(path, prefix=prefix, dimensions=dimensions, overwrite=overwrite)
+
+    @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_matrix_algorithms_header"])
+    def generate_c_matrix_algorithms_header(path: str, prefix: str = "acu", dimensions: list[int] | None = None, overwrite: bool = False) -> dict:
+        return generate_c_matrix_algorithms_header_impl(path, prefix=prefix, dimensions=dimensions, overwrite=overwrite)
 
     @mcp.tool(description=TOOL_DESCRIPTIONS["generate_c_statistics_header"])
     def generate_c_statistics_header(path: str, prefix: str = "acu", overwrite: bool = False) -> dict:

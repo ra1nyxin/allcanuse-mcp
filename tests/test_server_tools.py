@@ -58,8 +58,13 @@ class ServerToolTests(unittest.TestCase):
         self.assertIn("generate_c_lookup_table_header", names)
         self.assertIn("generate_c_polynomial_eval_header", names)
         self.assertIn("generate_c_matrix_math_header", names)
+        self.assertIn("generate_c_matrix_algorithms_header", names)
         self.assertIn("generate_c_statistics_header", names)
         self.assertIn("generate_c_fixed_point_header", names)
+        self.assertIn("list_installed_microsoft_software", names)
+        self.assertIn("inspect_excel_workbook", names)
+        self.assertIn("inspect_word_document", names)
+        self.assertIn("inspect_powerpoint_presentation", names)
         self.assertIn("generate_c_build_files", names)
         self.assertIn("format_c_code", names)
         categories = {item["name"]: item["category"] for item in result["tools"]}
@@ -73,6 +78,8 @@ class ServerToolTests(unittest.TestCase):
         self.assertEqual(categories["scan_c_numeric_risks"], "code")
         self.assertEqual(categories["generate_c_vector_math_header"], "code")
         self.assertEqual(categories["generate_c_matrix_math_header"], "code")
+        self.assertEqual(categories["generate_c_matrix_algorithms_header"], "code")
+        self.assertEqual(categories["list_installed_microsoft_software"], "microsoft")
 
     def test_quick_reference_resource_registered(self) -> None:
         server = create_server()
