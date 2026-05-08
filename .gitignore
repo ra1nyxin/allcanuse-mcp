@@ -11,7 +11,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
-runtime/managed_processes/
+runtime/
 .venv/
 venv/
 env/
