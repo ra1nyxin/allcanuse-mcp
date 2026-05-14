@@ -106,6 +106,19 @@ tool_timeout_sec = 240
 
 这里不需要额外配置兼容开关，只要保持 `--transport stdio` 即可。当前 `stdio` 启动入口会自动兼容 Codex 可能使用的 `Content-Length` framing，以及其他客户端常见的逐行 JSON 输入输出。如果 Codex 中出现工具调用结果为空、初始化超时或 stderr 里看到 `Content-Length: ...` 被当成 JSON 解析的情况，优先确认本地代码已经更新到包含 `src/allcanuse_mcp/stdio_compat.py` 的版本，然后完全重启 Codex 让它重新拉起 MCP 服务端。
 
+通常不需要把 `args` 改成 `["stdio_compat.py", "--transport", "stdio"]`，推荐仍然从仓库根目录启动 `run_server.py`。如果某个客户端只能配置到包目录并直接运行兼容入口，当前版本也支持下面这种备用写法：
+
+```toml
+[mcp_servers.allcanuse]
+type = "stdio"
+command = "/opt/homebrew/bin/python3"
+args = ["stdio_compat.py", "--transport", "stdio"]
+cwd = "/Users/you/path/to/allcanuse-mcp/src/allcanuse_mcp"
+enabled = true
+startup_timeout_ms = 30000
+tool_timeout_sec = 240
+```
+
 如果已经执行过 `pip install -e .`，也可以改成：
 
 ```toml

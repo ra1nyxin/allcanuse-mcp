@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import sys
 from contextlib import asynccontextmanager
 from io import TextIOWrapper
+from pathlib import Path
 from typing import BinaryIO, Literal
 
 import anyio
@@ -140,3 +142,37 @@ async def run_stdio_compatible(server: FastMCP) -> None:
             write_stream,
             server._mcp_server.create_initialization_options(),
         )
+
+
+def _ensure_src_on_path() -> None:
+    src_dir = Path(__file__).resolve().parents[1]
+    if str(src_dir) not in sys.path:
+        sys.path.insert(0, str(src_dir))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run allcanuse-mcp with a stdio transport compatible with line JSON and Content-Length frames."
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="stdio",
+        help="MCP transport to use. Default: stdio",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP host for non-stdio transports.")
+    parser.add_argument("--port", default=8000, type=int, help="HTTP port for non-stdio transports.")
+    args = parser.parse_args()
+
+    _ensure_src_on_path()
+    from allcanuse_mcp.server import create_server
+
+    server = create_server(host=args.host, port=args.port)
+    if args.transport == "stdio":
+        anyio.run(run_stdio_compatible, server)
+    else:
+        server.run(transport=args.transport)
+
+
+if __name__ == "__main__":
+    main()
