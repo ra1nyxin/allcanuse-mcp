@@ -82,6 +82,7 @@ pip install -e .
 
 ```toml
 [mcp_servers.allcanuse]
+type = "stdio"
 command = "python"
 args = ["run_server.py", "--transport", "stdio"]
 cwd = "D:/path/to/allcanuse"
@@ -90,10 +91,26 @@ startup_timeout_ms = 30000
 tool_timeout_sec = 180
 ```
 
+如果在 macOS 上使用 Codex，并且希望明确走当前项目内置的 `stdio` 兼容层，可以写成下面这种更完整的形式：
+
+```toml
+[mcp_servers.allcanuse]
+type = "stdio"
+command = "/opt/homebrew/bin/python3"
+args = ["run_server.py", "--transport", "stdio"]
+cwd = "/Users/you/path/to/allcanuse-mcp"
+enabled = true
+startup_timeout_ms = 30000
+tool_timeout_sec = 240
+```
+
+这里不需要额外配置兼容开关，只要保持 `--transport stdio` 即可。当前 `stdio` 启动入口会自动兼容 Codex 可能使用的 `Content-Length` framing，以及其他客户端常见的逐行 JSON 输入输出。如果 Codex 中出现工具调用结果为空、初始化超时或 stderr 里看到 `Content-Length: ...` 被当成 JSON 解析的情况，优先确认本地代码已经更新到包含 `src/allcanuse_mcp/stdio_compat.py` 的版本，然后完全重启 Codex 让它重新拉起 MCP 服务端。
+
 如果已经执行过 `pip install -e .`，也可以改成：
 
 ```toml
 [mcp_servers.allcanuse]
+type = "stdio"
 command = "allcanuse-mcp"
 enabled = true
 startup_timeout_ms = 30000
