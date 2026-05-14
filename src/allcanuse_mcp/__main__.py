@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 
+import anyio
+
 from allcanuse_mcp.server import create_server
+from allcanuse_mcp.stdio_compat import run_stdio_compatible
 
 
 def main() -> None:
@@ -18,7 +21,10 @@ def main() -> None:
     args = parser.parse_args()
 
     server = create_server(host=args.host, port=args.port)
-    server.run(transport=args.transport)
+    if args.transport == "stdio":
+        anyio.run(run_stdio_compatible, server)
+    else:
+        server.run(transport=args.transport)
 
 
 if __name__ == "__main__":

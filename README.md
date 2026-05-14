@@ -383,6 +383,30 @@ get_desktop_context()
 
 如果这些调用都正常返回，通常就说明 MCP 已接通并可直接使用。
 
+### 4. `stdio` 接入异常排查
+
+少数环境里可能会遇到一种比较反常的 `stdio` 接入失败：
+
+- 客户端配置看起来正确，服务端进程也能被拉起
+- 模型侧调用工具后结果为空，或初始化阶段一直等不到响应
+- 手工测试服务端 stderr 里能看到类似 `Invalid JSON: expected value`，并且输入内容像 `Content-Length: 172`
+
+这通常不是工具注册失败，而是客户端和当前 Python MCP SDK 对 `stdio` 消息格式的理解不一致。某些客户端会按 `Content-Length: ...\r\n\r\n{json}` 这种 framing 方式发送 JSON-RPC 消息，而部分 SDK 版本默认按“一行一个 JSON”读取 stdin，导致它把 `Content-Length: ...` 当成 JSON 正文解析。
+
+当前项目的 `--transport stdio` 已经做了兼容处理：
+
+- 继续支持原本的逐行 JSON 输入输出
+- 同时支持 `Content-Length` framing 输入输出
+- 服务端会根据客户端实际发送的首个消息格式自动选择响应格式
+
+如果某台机器上出现“其他 macOS / Windows / Linux 正常，但当前机器调用结果空白”的情况，建议按下面顺序排查：
+
+1. 确认客户端配置仍然使用 `--transport stdio`
+2. 更新到包含 `src/allcanuse_mcp/stdio_compat.py` 的版本
+3. 完全重启 MCP 客户端，让客户端重新拉起服务端进程
+4. 先调用 `list_all_tools()`，再调用一个简单工具如 `get_system_info()`
+5. 如果仍然异常，再用最小 stdio 客户端分别测试逐行 JSON 与 `Content-Length` framing
+
 ## 文档
 
 - 通用使用说明：[docs/USAGE.zh-CN.md](./docs/USAGE.zh-CN.md)
