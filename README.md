@@ -106,6 +106,8 @@ tool_timeout_sec = 240
 
 这里不需要额外配置兼容开关，只要保持 `--transport stdio` 即可。当前 `stdio` 启动入口会自动兼容 Codex 可能使用的 `Content-Length` framing，以及其他客户端常见的逐行 JSON 输入输出。如果 Codex 中出现工具调用结果为空、初始化超时或 stderr 里看到 `Content-Length: ...` 被当成 JSON 解析的情况，优先确认本地代码已经更新到包含 `src/allcanuse_mcp/stdio_compat.py` 的版本，然后完全重启 Codex 让它重新拉起 MCP 服务端。
 
+注意：Codex 可能会把大量 MCP tools 放进延迟工具发现入口，而不是把 100+ 个 allcanuse 工具全部直接显示给模型。如果模型自检时只报告 `node_repl`、浏览器插件或其他非 allcanuse 工具可用，通常说明它没有先走工具发现。可以明确要求模型“先搜索并调用 allcanuse 的 `list_all_tools`，不要用 `node_repl` 代替 allcanuse 自检”。
+
 通常不需要把 `args` 改成 `["stdio_compat.py", "--transport", "stdio"]`，推荐仍然从仓库根目录启动 `run_server.py`。如果某个客户端只能配置到包目录并直接运行兼容入口，当前版本也支持下面这种备用写法：
 
 ```toml

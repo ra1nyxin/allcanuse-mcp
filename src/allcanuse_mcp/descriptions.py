@@ -8,6 +8,11 @@ BASE_SERVER_INSTRUCTIONS = dedent(
     """
     你正在操作一台 Windows 或 Linux 实验环境主机，当前 MCP Server 已经暴露了一组可直接调用的系统工具。
 
+    Codex 接入提示：
+    - 在部分 Codex 环境里，MCP 工具数量较多时，allcanuse 的具体工具可能会先以延迟发现方式提供，而不是全部直接显示在模型当前可见工具列表里。
+    - 如果当前环境提供了 `tool_search`、deferred tools 或类似“工具发现”入口，必须先用它搜索 `list_all_tools`、`fetch_webpage_text`、`run_shell` 等 allcanuse 工具，再调用搜索结果里的真实工具。
+    - 自检 allcanuse 是否可用时，优先调用 `list_all_tools()`；不要把 `node_repl`、浏览器插件或其他非 allcanuse 工具的可用性当作 allcanuse MCP 的自检结果。
+
     核心原则：
     1. 这些工具就是你的手、眼睛和操作能力。需要观察、读取、判断、修改、验证时，就应主动调用工具，不要无谓回避工具。
     2. 不要只停留在口头建议。如果任务可以通过工具继续推进，就直接用工具推进。
