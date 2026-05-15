@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
+from typing import Literal
+
 from mcp.server.fastmcp import FastMCP
 
-from allcanuse_mcp.descriptions import SERVER_INSTRUCTIONS
 from allcanuse_mcp.descriptions import TOOL_DESCRIPTIONS
 from allcanuse_mcp.descriptions import build_server_instructions
 from allcanuse_mcp.descriptions import render_runtime_context_text
@@ -25,6 +27,90 @@ from allcanuse_mcp.tools import network as network_tools
 from allcanuse_mcp.tools import optimization as optimization_tools
 from allcanuse_mcp.tools import system as system_tools
 from allcanuse_mcp.tools import windows as window_tools
+
+
+ServerProfile = Literal["auto", "full", "codex"]
+
+
+CODEX_EXPOSED_TOOLS = {
+    "list_all_tools",
+    "list_cameras",
+    "capture_camera_photo",
+    "wait",
+    "wait_until",
+    "get_scheduler_time",
+    "wait_for_file",
+    "wait_for_process",
+    "wait_for_port",
+    "wait_for_http",
+    "wait_for_window",
+    "wait_for_desktop_change",
+    "create_background_task",
+    "list_background_tasks",
+    "get_background_task",
+    "cancel_background_task",
+    "pause_background_task",
+    "resume_background_task",
+    "wait_for_background_task",
+    "create_task_plan",
+    "update_task_step",
+    "append_task_event",
+    "record_task_artifact",
+    "summarize_background_task",
+    "get_task_handoff",
+    "mark_task_waiting_for_user",
+    "mark_task_waiting_for_condition",
+    "start_managed_process",
+    "list_managed_processes",
+    "get_managed_process",
+    "note_managed_process",
+    "stop_managed_process",
+    "list_installed_microsoft_software",
+    "inspect_excel_workbook",
+    "inspect_word_document",
+    "inspect_powerpoint_presentation",
+    "list_windows",
+    "get_active_window",
+    "get_desktop_context",
+    "capture_screenshot",
+}
+
+
+def _detect_codex_client() -> bool:
+    if os.getenv("ALLCANUSE_MCP_PROFILE"):
+        return False
+    return any(name in os.environ for name in ("CODEX_THREAD_ID", "CODEX_MANAGED_BY_NPM"))
+
+
+def resolve_profile(profile: ServerProfile | None = "auto") -> Literal["full", "codex"]:
+    selected = (os.getenv("ALLCANUSE_MCP_PROFILE") or profile or "auto").lower()
+    if selected == "auto":
+        return "codex" if _detect_codex_client() else "full"
+    if selected not in {"full", "codex"}:
+        raise ValueError("profile must be one of: auto, full, codex")
+    return selected
+
+
+def _short_tool_description(tool_name: str) -> str:
+    return TOOL_DESCRIPTIONS[tool_name].splitlines()[0]
+
+
+def _apply_tool_profile(mcp: FastMCP, profile: Literal["full", "codex"]) -> None:
+    if profile != "codex":
+        return
+
+    for tool_name in list(mcp._tool_manager._tools):
+        if tool_name not in CODEX_EXPOSED_TOOLS:
+            mcp.remove_tool(tool_name)
+            continue
+        tool = mcp._tool_manager._tools[tool_name]
+        if tool_name in TOOL_DESCRIPTIONS:
+            tool.description = _short_tool_description(tool_name)
+        tool.meta = {
+            **(tool.meta or {}),
+            "allcanuse_profile": "codex",
+            "selection_hint": "Use Codex native tools first; call this MCP only for non-native capabilities.",
+        }
 
 
 def _tool_category(tool_name: str) -> str:
@@ -186,18 +272,25 @@ def _tool_category(tool_name: str) -> str:
     return "other"
 
 
-def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
+def create_server(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    profile: ServerProfile | None = "full",
+) -> FastMCP:
+    resolved_profile = resolve_profile(profile)
     mcp = FastMCP(
         name="allcanuse-mcp",
-        instructions=build_server_instructions(),
+        instructions=build_server_instructions(resolved_profile),
         host=host,
         port=port,
     )
 
-    @mcp.tool(description=TOOL_DESCRIPTIONS["list_all_tools"])
+    @mcp.tool(description=_short_tool_description("list_all_tools"))
     def list_all_tools(include_descriptions: bool = False) -> dict:
         items = []
-        for tool_name in sorted(TOOL_DESCRIPTIONS):
+        exposed = set(mcp._tool_manager._tools)
+        for tool_name in sorted(exposed):
             first_line = TOOL_DESCRIPTIONS[tool_name].splitlines()[0]
             item = {
                 "name": tool_name,
@@ -219,6 +312,11 @@ def create_server(*, host: str = "127.0.0.1", port: int = 8000) -> FastMCP:
     window_tools.register(mcp)
     network_tools.register(mcp)
     optimization_tools.register(mcp)
+
+    _apply_tool_profile(mcp, resolved_profile)
+
+    if resolved_profile == "codex":
+        return mcp
 
     @mcp.resource(
         "resource://guides/index",

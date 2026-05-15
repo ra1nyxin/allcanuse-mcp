@@ -52,7 +52,7 @@ allcanuse-mcp
 ```toml
 [mcp_servers.allcanuse]
 command = "python"
-args = ["run_server.py", "--transport", "stdio"]
+args = ["run_server.py", "--transport", "stdio", "--profile", "codex"]
 cwd = "D:/path/to/allcanuse"
 enabled = true
 startup_timeout_ms = 30000
@@ -64,7 +64,7 @@ tool_timeout_sec = 180
 ```toml
 [mcp_servers.allcanuse]
 command = "python"
-args = ["run_server.py", "--transport", "stdio"]
+args = ["run_server.py", "--transport", "stdio", "--profile", "codex"]
 cwd = "/path/to/allcanuse"
 enabled = true
 startup_timeout_ms = 30000
@@ -88,7 +88,7 @@ tool_timeout_sec = 180
 ```toml
 [mcp_servers.allcanuse]
 command = "python"
-args = ["run_server.py", "--transport", "stdio"]
+args = ["run_server.py", "--transport", "stdio", "--profile", "codex"]
 cwd = "D:/path/to/allcanuse"
 enabled = true
 startup_timeout_ms = 30000
@@ -97,6 +97,10 @@ tool_timeout_sec = 180
 [mcp_servers.allcanuse.env]
 PYTHONIOENCODING = "utf-8"
 ```
+
+Codex 建议显式使用 `--profile codex`。该模式会优先保留 Codex 原生没有的桌面观察、截图、摄像头、值班/后台任务、长时进程登记、Microsoft 文档检查等工具，并隐藏 `run_shell`、`read_file`、`patch_lines`、`fetch_webpage_text` 等 Codex 原生能力，减少初始化上下文和工具选择开销。
+
+如果你确实需要完整 100+ 工具集，可以把参数改成 `--profile full`，或设置环境变量 `ALLCANUSE_MCP_PROFILE=full` 后重启 Codex。
 
 如果你发现某些长时工具容易超时，优先增大：
 

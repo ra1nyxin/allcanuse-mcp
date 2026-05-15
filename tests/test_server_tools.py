@@ -7,6 +7,9 @@ from allcanuse_mcp.server import create_server
 
 
 class ServerToolTests(unittest.TestCase):
+    def _tool_names(self, server) -> list[str]:
+        return [tool.name for tool in server._tool_manager._tools.values()]
+
     def test_list_all_tools_contains_expected_entries(self) -> None:
         server = create_server()
         result = None
@@ -80,6 +83,45 @@ class ServerToolTests(unittest.TestCase):
         self.assertEqual(categories["generate_c_matrix_math_header"], "code")
         self.assertEqual(categories["generate_c_matrix_algorithms_header"], "code")
         self.assertEqual(categories["list_installed_microsoft_software"], "microsoft")
+
+    def test_codex_profile_exposes_only_non_native_tools(self) -> None:
+        server = create_server(profile="codex")
+        names = self._tool_names(server)
+
+        self.assertLess(len(names), 45)
+        self.assertIn("list_all_tools", names)
+        self.assertIn("get_desktop_context", names)
+        self.assertIn("capture_screenshot", names)
+        self.assertIn("create_background_task", names)
+        self.assertIn("get_task_handoff", names)
+        self.assertIn("start_managed_process", names)
+        self.assertIn("inspect_excel_workbook", names)
+        self.assertIn("capture_camera_photo", names)
+
+        self.assertNotIn("read_file", names)
+        self.assertNotIn("write_file", names)
+        self.assertNotIn("patch_lines", names)
+        self.assertNotIn("search_text", names)
+        self.assertNotIn("run_shell", names)
+        self.assertNotIn("run_cmd", names)
+        self.assertNotIn("fetch_webpage_text", names)
+        self.assertNotIn("http_request", names)
+
+        total_description_chars = sum(len(tool.description or "") for tool in server._tool_manager._tools.values())
+        self.assertLess(total_description_chars, 2500)
+        self.assertLess(len(server._mcp_server.instructions), 1200)
+        self.assertEqual(server._resource_manager._resources, {})
+        self.assertEqual(server._prompt_manager._prompts, {})
+
+    def test_codex_list_all_tools_matches_exposed_tools(self) -> None:
+        server = create_server(profile="codex")
+        list_tool = server._tool_manager._tools["list_all_tools"]
+        result = list_tool.fn(include_descriptions=False)
+        listed = {item["name"] for item in result["tools"]}
+
+        self.assertEqual(listed, set(self._tool_names(server)))
+        self.assertNotIn("run_shell", listed)
+        self.assertIn("wait_for_window", listed)
 
     def test_quick_reference_resource_registered(self) -> None:
         server = create_server()

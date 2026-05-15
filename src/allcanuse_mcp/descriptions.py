@@ -80,6 +80,17 @@ BASE_SERVER_INSTRUCTIONS = dedent(
 ).strip()
 
 
+CODEX_SERVER_INSTRUCTIONS = dedent(
+    """
+    allcanuse-mcp is running in Codex profile.
+
+    Use Codex native tools first for shell commands, file reads/writes, patches, code search, and web browsing. Call this MCP only for capabilities Codex does not provide natively, such as desktop/window observation, screenshots, cameras, long-running duty/background handoff, managed process tracking, or Microsoft document inspection.
+
+    Start with `list_all_tools()` when you need to discover the currently exposed MCP-only tools. The full allcanuse toolset is intentionally hidden in this profile to keep the model context small and reduce tool-selection latency.
+    """
+).strip()
+
+
 def render_runtime_context_text() -> str:
     local_now = datetime.now().astimezone()
     utc_now = datetime.now(dt_timezone.utc)
@@ -92,7 +103,24 @@ def render_runtime_context_text() -> str:
     )
 
 
-def build_server_instructions() -> str:
+def render_runtime_context_ascii() -> str:
+    local_now = datetime.now().astimezone()
+    utc_now = datetime.now(dt_timezone.utc)
+    return (
+        f"local_time={local_now.isoformat()}; "
+        f"local_utc_offset={local_now.utcoffset()}; "
+        f"utc_time={utc_now.isoformat()}; "
+        "Use these absolute times for relative time requests, and re-check with get_time or get_scheduler_time for long-running tasks."
+    )
+
+
+def build_server_instructions(profile: str = "full") -> str:
+    if profile == "codex":
+        return (
+            f"{CODEX_SERVER_INSTRUCTIONS}\n\n"
+            "Runtime time context:\n"
+            f"- {render_runtime_context_ascii()}"
+        )
     return (
         f"{BASE_SERVER_INSTRUCTIONS}\n\n"
         "实时时间上下文：\n"

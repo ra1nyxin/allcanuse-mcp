@@ -162,12 +162,18 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1", help="HTTP host for non-stdio transports.")
     parser.add_argument("--port", default=8000, type=int, help="HTTP port for non-stdio transports.")
+    parser.add_argument(
+        "--profile",
+        choices=["auto", "full", "codex"],
+        default="auto",
+        help="Tool exposure profile. auto uses the compact Codex profile when Codex environment variables are present.",
+    )
     args = parser.parse_args()
 
     _ensure_src_on_path()
     from allcanuse_mcp.server import create_server
 
-    server = create_server(host=args.host, port=args.port)
+    server = create_server(host=args.host, port=args.port, profile=args.profile)
     if args.transport == "stdio":
         anyio.run(run_stdio_compatible, server)
     else:

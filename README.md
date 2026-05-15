@@ -84,7 +84,7 @@ pip install -e .
 [mcp_servers.allcanuse]
 type = "stdio"
 command = "python"
-args = ["run_server.py", "--transport", "stdio"]
+args = ["run_server.py", "--transport", "stdio", "--profile", "codex"]
 cwd = "D:/path/to/allcanuse"
 enabled = true
 startup_timeout_ms = 30000
@@ -97,16 +97,18 @@ tool_timeout_sec = 180
 [mcp_servers.allcanuse]
 type = "stdio"
 command = "/opt/homebrew/bin/python3"
-args = ["run_server.py", "--transport", "stdio"]
+args = ["run_server.py", "--transport", "stdio", "--profile", "codex"]
 cwd = "/Users/you/path/to/allcanuse-mcp"
 enabled = true
 startup_timeout_ms = 30000
 tool_timeout_sec = 240
 ```
 
+Codex 建议显式加 `--profile codex`。该 profile 会优先保留 Codex 原生没有的桌面观察、截图、摄像头、值班/后台任务、长时进程登记、Microsoft 文档检查等能力，并隐藏 `run_shell`、`read_file`、`patch_lines`、`fetch_webpage_text` 这类 Codex 已经原生提供的能力，减少初始化上下文和工具选择开销。
+
 这里不需要额外配置兼容开关，只要保持 `--transport stdio` 即可。当前 `stdio` 启动入口会自动兼容 Codex 可能使用的 `Content-Length` framing，以及其他客户端常见的逐行 JSON 输入输出。如果 Codex 中出现工具调用结果为空、初始化超时或 stderr 里看到 `Content-Length: ...` 被当成 JSON 解析的情况，优先确认本地代码已经更新到包含 `src/allcanuse_mcp/stdio_compat.py` 的版本，然后完全重启 Codex 让它重新拉起 MCP 服务端。
 
-注意：Codex 可能会把大量 MCP tools 放进延迟工具发现入口，而不是把 100+ 个 allcanuse 工具全部直接显示给模型。如果模型自检时只报告 `node_repl`、浏览器插件或其他非 allcanuse 工具可用，通常说明它没有先走工具发现。可以明确要求模型“先搜索并调用 allcanuse 的 `list_all_tools`，不要用 `node_repl` 代替 allcanuse 自检”。
+注意：`--profile codex` 下 `list_all_tools()` 只会列出当前暴露给 Codex 的精简工具集。需要完整 100+ 工具时，把参数改成 `--profile full`，或者设置环境变量 `ALLCANUSE_MCP_PROFILE=full` 后重启客户端。
 
 通常不需要把 `args` 改成 `["stdio_compat.py", "--transport", "stdio"]`，推荐仍然从仓库根目录启动 `run_server.py`。如果某个客户端只能配置到包目录并直接运行兼容入口，当前版本也支持下面这种备用写法：
 
@@ -114,7 +116,7 @@ tool_timeout_sec = 240
 [mcp_servers.allcanuse]
 type = "stdio"
 command = "/opt/homebrew/bin/python3"
-args = ["stdio_compat.py", "--transport", "stdio"]
+args = ["stdio_compat.py", "--transport", "stdio", "--profile", "codex"]
 cwd = "/Users/you/path/to/allcanuse-mcp/src/allcanuse_mcp"
 enabled = true
 startup_timeout_ms = 30000
